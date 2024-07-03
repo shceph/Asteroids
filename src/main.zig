@@ -61,6 +61,13 @@ const Asteroid = struct {
         large
     };
 
+    const SpawnSide = enum {
+        top,
+        bottom,
+        left,
+        right
+    };
+
     pub fn radius(size: Size) f32 {
         return switch (size) {
             .small => 4,
@@ -101,10 +108,10 @@ const Asteroid = struct {
     pub fn new() Asteroid {
         var astr: Asteroid = .{
             .points = undefined,
-            .pos = .{ .x = 0.0, .y = 0.0 },
-            .velocity = .{ .x = 0.0, .y = 0.0 },
+            .pos = undefined,
+            .velocity = undefined,
             .size = undefined,
-            .velocityAngle = 0.0
+            .spawnSide = undefined
         };
 
         const rand_int = @mod(rnd.random().int(i32), 100);
@@ -117,42 +124,88 @@ const Asteroid = struct {
             astr.size = .small;
         }
 
-        // If true, asteroid spawns on the x-axis (top or bottom)
-        // If false, asteroid spawns on the y-axis (left or right)
-        if (rnd.random().boolean()) {
+        astr.spawnSide = @enumFromInt(@mod(rnd.random().int(i32), 4));
+
+        if (astr.spawnSide == .top) {
             astr.pos.x = (rnd.random().float(f32) - 0.5) * (game.rightBound + @fabs(game.leftBound));
-            astr.pos.y = game.topBound;
-        } else {
-            astr.pos.y = (rnd.random().float(f32) - 0.5) * (game.bottomBound + @fabs(game.topBound));
-            astr.pos.x = game.leftBound;
+            astr.pos.y = game.topBound - radius(astr.size);
+            astr.velocity.x = (rnd.random().float(f32) - 0.5) * 2;
+            astr.velocity.y = rnd.random().float(f32);
+        } else if (astr.spawnSide == .bottom) {
+            astr.pos.x = (rnd.random().float(f32) - 0.5) * (game.bottomBound + @fabs(game.topBound));
+            astr.pos.y = game.bottomBound + radius(astr.size);
+            astr.velocity.x = (rnd.random().float(f32) - 0.5) * 2;
+            astr.velocity.y = rnd.random().float(f32) * (-1);
+        } else if (astr.spawnSide == .left) {
+            astr.pos.x = game.leftBound - radius(astr.size);
+            astr.pos.y = (rnd.random().float(f32) - 0.5) * (game.topBound + @fabs(game.bottomBound));
+            astr.velocity.x = rnd.random().float(f32);
+            astr.velocity.y = (rnd.random().float(f32) - 0.5) * 2;
+        } else if (astr.spawnSide == .right) {
+            astr.pos.x = game.rightBound + radius(astr.size);
+            astr.pos.y = (rnd.random().float(f32) - 0.5) * (game.rightBound + @fabs(game.leftBound));
+            astr.velocity.x = rnd.random().float(f32) * (-1);
+            astr.velocity.y = (rnd.random().float(f32) - 0.5) * 2;
         }
 
-        astr.velocity.x = rnd.random().float(f32);
-        astr.velocity.y = 1.0 - astr.velocity.x;
+        astr.velocity.x += 0.3;
+        astr.velocity.y += 0.3;
         astr.velocity.x *= speedMultiplier(astr.size);
         astr.velocity.y *= speedMultiplier(astr.size);
 
         for (astr.points, 0..) |_, i| {
-            // The random number is always positive, and I don't want coordinates to only increase
-            // since it would be weird when checking for collision
-            const multiplyXby1orMinus1: f32 = if (rnd.random().boolean()) -1 else 1;
-            const multiplyYby1orMinus1: f32 = if (rnd.random().boolean()) -1 else 1;
+            // The random number is always positive, and I don't want
+            // coordinates to only increase since it would be weird when
+            // checking for collision as center wouldn't really be in center
+            const multiplyXby1orMinus1: f32 =
+                if (rnd.random().boolean()) -1 else 1;
 
-            astr.points[i].x = Asteroid.pointsOnCircle(astr.size)[i].x
-                + multiplyXby1orMinus1 * rnd.random().float(f32) * randomMultiplier(astr.size);
+            const multiplyYby1orMinus1: f32 =
+                if (rnd.random().boolean()) -1 else 1;
 
-            astr.points[i].y = Asteroid.pointsOnCircle(astr.size)[i].y
-                + multiplyYby1orMinus1 * rnd.random().float(f32) * randomMultiplier(astr.size);
+            astr.points[i].x =
+                Asteroid.pointsOnCircle(astr.size)[i].x
+                + multiplyXby1orMinus1 * rnd.random().float(f32)
+                * randomMultiplier(astr.size);
+
+            astr.points[i].y =
+                Asteroid.pointsOnCircle(astr.size)[i].y
+                + multiplyYby1orMinus1 * rnd.random().float(f32)
+                * randomMultiplier(astr.size);
         }
 
         return astr;
+    }
+
+    fn checkIfOutOfBounds(self: *@This(), top: bool, bottom: bool, left: bool, right: bool) bool {
+        if (top and self.*.pos.y < game.topBound) {
+            return true;
+        }
+
+        if (bottom and self.*.pos.y > game.bottomBound) {
+            return true;
+        }
+
+        if (left and self.*.pos.x < game.leftBound) {
+            return true;
+        }
+
+        if (right and self.*.pos.x > game.rightBound) {
+            return true;
+        }
+
+        return false;
     }
 
     fn update(self: *@This()) void {
         self.*.pos.x += self.velocity.x * game.deltaTimeNormalized();
         self.*.pos.y += self.velocity.y * game.deltaTimeNormalized();
 
-        if (self.*.pos.x > game.rightBound or self.*.pos.y > game.bottomBound) {
+        if ((self.*.spawnSide == .top and checkIfOutOfBounds(self, false, true, true, true)) or
+            (self.*.spawnSide == .bottom and checkIfOutOfBounds(self, true, false, true, true)) or
+            (self.*.spawnSide == .left and checkIfOutOfBounds(self, true, true, false, true)) or
+            (self.*.spawnSide == .right and checkIfOutOfBounds(self, true, true, true, false)))
+        {
             self.* = new();
         }
     }
@@ -160,36 +213,60 @@ const Asteroid = struct {
     // Asteroid shape is generated by adding radnom values to the already known coordinates of points
     // on a circle
     const pointsOnCircleSmallAst: [8]Vector2 = .{
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 0)) * radius(.small), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 0)) * radius(.small) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 1)) * radius(.small), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 1)) * radius(.small) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 2)) * radius(.small), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 2)) * radius(.small) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 3)) * radius(.small), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 3)) * radius(.small) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 4)) * radius(.small), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 4)) * radius(.small) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 5)) * radius(.small), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 5)) * radius(.small) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 6)) * radius(.small), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 6)) * radius(.small) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 7)) * radius(.small), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 7)) * radius(.small) }
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 0)) * radius(.small),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 0)) * radius(.small) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 1)) * radius(.small),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 1)) * radius(.small) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 2)) * radius(.small),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 2)) * radius(.small) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 3)) * radius(.small),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 3)) * radius(.small) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 4)) * radius(.small),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 4)) * radius(.small) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 5)) * radius(.small),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 5)) * radius(.small) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 6)) * radius(.small),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 6)) * radius(.small) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 7)) * radius(.small),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 7)) * radius(.small) }
     };
 
     const pointsOnCircleMediumAst: [8]Vector2 = .{
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 0)) * radius(.medium), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 0)) * radius(.medium) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 1)) * radius(.medium), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 1)) * radius(.medium) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 2)) * radius(.medium), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 2)) * radius(.medium) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 3)) * radius(.medium), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 3)) * radius(.medium) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 4)) * radius(.medium), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 4)) * radius(.medium) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 5)) * radius(.medium), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 5)) * radius(.medium) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 6)) * radius(.medium), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 6)) * radius(.medium) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 7)) * radius(.medium), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 7)) * radius(.medium) }
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 0)) * radius(.medium),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 0)) * radius(.medium) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 1)) * radius(.medium),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 1)) * radius(.medium) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 2)) * radius(.medium),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 2)) * radius(.medium) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 3)) * radius(.medium),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 3)) * radius(.medium) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 4)) * radius(.medium),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 4)) * radius(.medium) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 5)) * radius(.medium),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 5)) * radius(.medium) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 6)) * radius(.medium),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 6)) * radius(.medium) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 7)) * radius(.medium),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 7)) * radius(.medium) }
     };
 
     const pointsOnCircleLargeAst: [8]Vector2 = .{
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 0)) * radius(.large), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 0)) * radius(.large) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 1)) * radius(.large), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 1)) * radius(.large) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 2)) * radius(.large), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 2)) * radius(.large) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 3)) * radius(.large), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 3)) * radius(.large) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 4)) * radius(.large), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 4)) * radius(.large) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 5)) * radius(.large), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 5)) * radius(.large) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 6)) * radius(.large), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 6)) * radius(.large) },
-        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 7)) * radius(.large), .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 7)) * radius(.large) }
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 0)) * radius(.large),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 0)) * radius(.large) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 1)) * radius(.large),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 1)) * radius(.large) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 2)) * radius(.large),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 2)) * radius(.large) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 3)) * radius(.large),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 3)) * radius(.large) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 4)) * radius(.large),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 4)) * radius(.large) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 5)) * radius(.large),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 5)) * radius(.large) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 6)) * radius(.large),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 6)) * radius(.large) },
+        .{ .x = @cos(math.degreesToRadians(f32, 360.0 / 8.0 * 7)) * radius(.large),
+           .y = @sin(math.degreesToRadians(f32, 360.0 / 8.0 * 7)) * radius(.large) }
     };
 
     var rnd: rand.Xoshiro256 = undefined;
@@ -198,7 +275,7 @@ const Asteroid = struct {
     pos: Vector2,
     velocity: Vector2,
     size: Size,
-    velocityAngle: f32
+    spawnSide: SpawnSide,
 };
 
 const numAsteroids = 10;
@@ -209,14 +286,20 @@ pub fn init() void {
     game.topBound = -150;
 
     const gameWidth =
-        (@as(f32, @floatFromInt(rl.getScreenWidth())) / @as(f32, @floatFromInt(rl.getScreenHeight())))
+        (@as(f32, @floatFromInt(rl.getScreenWidth()))
+         / @as(f32, @floatFromInt(rl.getScreenHeight())))
         * (game.bottomBound + @fabs(game.topBound));
 
     game.leftBound = -gameWidth / 2;
     game.rightBound = gameWidth / 2;
 
-    game.winWidthOverGameWidth = @as(f32, @floatFromInt(rl.getScreenWidth())) / (game.rightBound + @fabs(game.leftBound));
-    game.winHeightOverGameHeight = @as(f32, @floatFromInt(rl.getScreenHeight())) / (game.bottomBound + @fabs(game.topBound));
+    game.winWidthOverGameWidth =
+        @as(f32, @floatFromInt(rl.getScreenWidth()))
+        / (game.rightBound + @fabs(game.leftBound));
+
+    game.winHeightOverGameHeight =
+        @as(f32, @floatFromInt(rl.getScreenHeight()))
+        / (game.bottomBound + @fabs(game.topBound));
 
     game.deltaTime = 0;
 
@@ -235,7 +318,8 @@ pub fn init() void {
 }
 
 pub fn update() void {
-    const isAtMaxVel = (math.pow(f32, ship.vel.x, 2) + math.pow(f32, ship.vel.y, 2)
+    const isAtMaxVel =
+        (math.pow(f32, ship.vel.x, 2) + math.pow(f32, ship.vel.y, 2)
         >= Ship.maxVelocity * Ship.maxVelocity);
 
     if (!(isAtMaxVel and
@@ -294,8 +378,10 @@ fn input() void {
         // ship.angleWhenEngineLastUsed = ship.rot;
         ship.angleWhenEngineLastUsed = math.atan(-ship.vel.y / ship.vel.x);
 
-        Proportions.xOverTotalVel = ship.vel.x / @sqrt(ship.vel.x*ship.vel.x + ship.vel.y*ship.vel.y);
-        Proportions.yOverTotalVel = ship.vel.y / @sqrt(ship.vel.x*ship.vel.x + ship.vel.y*ship.vel.y);
+        Proportions.xOverTotalVel =
+            ship.vel.x / @sqrt(ship.vel.x*ship.vel.x + ship.vel.y*ship.vel.y);
+        Proportions.yOverTotalVel =
+            ship.vel.y / @sqrt(ship.vel.x*ship.vel.x + ship.vel.y*ship.vel.y);
 
         ship.engineWorking = true;
     } else {  // If engine is idle
@@ -395,16 +481,15 @@ pub fn main() !void {
     Asteroid.initStruct();
     init();
 
-    // Main game loop
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
         game.deltaTime = rl.getFrameTime();
         // Update
-        //----------------------------------------------------------------------------------
+        //---------------------------------------------------------------------
         input();
         update();
 
         // Draw
-        //----------------------------------------------------------------------------------
+        //---------------------------------------------------------------------
         rl.beginDrawing();
         defer rl.endDrawing();
 

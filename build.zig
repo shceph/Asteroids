@@ -7,7 +7,12 @@ pub fn build(b: *std.Build) !void {
     var raylib = rl.getModule(b, "raylib-zig");
     var raylib_math = rl.math.getModule(b, "raylib-zig");
 
-    const exe = b.addExecutable(.{ .name = "asteroids", .root_source_file = .{ .path = "src/main.zig" }, .optimize = optimize, .target = target });
+    const exe = b.addExecutable(.{ 
+        .name = "asteroids",
+        .root_source_file = .{ .path = "src/main.zig" },
+        .optimize = optimize,
+        .target = target
+    });
 
     rl.link(b, exe, target, optimize);
     exe.addModule("raylib", raylib);
