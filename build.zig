@@ -1,26 +1,35 @@
 const std = @import("std");
-const rl = @import("raylib-zig/build.zig");
 
-pub fn build(b: *std.Build) !void {
+pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    var raylib = rl.getModule(b, "raylib-zig");
-    var raylib_math = rl.math.getModule(b, "raylib-zig");
 
     const exe = b.addExecutable(.{ 
         .name = "asteroids",
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = .{ .src_path = .{ .owner = b, .sub_path = "src/main.zig" } },
         .optimize = optimize,
         .target = target
     });
 
-    rl.link(b, exe, target, optimize);
-    exe.addModule("raylib", raylib);
-    exe.addModule("raylib-math", raylib_math);
+    // Add raylib-zig as a dependency
+    const raylib_dep = b.dependency("raylib-zig", .{
+        .target = target,
+        .optimize = optimize,
+    });
 
-    const run_cmd = b.addRunArtifact(exe);
-    const run_step = b.step("run", "run");
-    run_step.dependOn(&run_cmd.step);
+    // Import the main raylib module and raygui module
+    const raylib = raylib_dep.module("raylib");
+    const raygui = raylib_dep.module("raygui");
+    
+    // Import the raylib C library artifact
+    const raylib_artifact = raylib_dep.artifact("raylib");
+
+    // Link the raylib C library artifact
+    exe.linkLibrary(raylib_artifact);
+
+    // Add the raylib and raygui modules to the root module
+    exe.root_module.addImport("raylib", raylib);
+    exe.root_module.addImport("raygui", raygui);
 
     b.installArtifact(exe);
 }
