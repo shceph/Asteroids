@@ -1,39 +1,11 @@
 const std = @import("std");
 const math = std.math;
 const rand = std.rand;
-const print = std.debug.print;
 
 const rl = @import("raylib");
 const rlm = rl.math;
 const Vector2 = rl.Vector2;
 const Matrix  = rl.Matrix;
-
-const Ship = struct {
-    const shipPoints: [8]Vector2 = .{
-        .{ .x =  0.0, .y =  5.0 },
-        .{ .x = -5.0, .y = -5.0 },
-        .{ .x =  5.0, .y = -5.0 },
-        .{ .x = -3.0, .y = -3.5 },
-        .{ .x =  3.0, .y = -3.5 },
-        .{ .x = -2.0, .y = -3.5 },
-        .{ .x =  2.0, .y = -3.5 },
-        .{ .x =  0.0, .y = -7.0 }
-    };
-
-    const maxVelocity = 5;
-    const engineWorkingAcc = 0.1;
-    const engineIdleAcc = 0.02;
-    const rotationSpeed = 3.0;
-
-    pos: Vector2,
-    vel: Vector2,
-    acc: Vector2,
-    rot: f32,
-    angleWhenEngineLastUsed: f32,
-    engineWorking: bool
-};
-
-var ship: Ship = undefined;
 
 const Game = struct {
     rightBound: f32,
@@ -53,6 +25,168 @@ const Game = struct {
 };
 
 var game: Game = undefined;
+
+const Ship = struct {
+    const Line = struct {
+        pointA: Vector2,
+        pointB: Vector2
+    };
+    // rl.drawLineEx(shipPoints[0], shipPoints[1], thickness, rl.Color.white);
+    // rl.drawLineEx(shipPoints[0], shipPoints[2], thickness, rl.Color.white);
+    // rl.drawLineEx(shipPoints[1], shipPoints[3], thickness, rl.Color.white);
+    // rl.drawLineEx(shipPoints[2], shipPoints[4], thickness, rl.Color.white);
+    // rl.drawLineEx(shipPoints[3], shipPoints[4], thickness, rl.Color.white);
+
+    const defaultShipLines: [7]Line = .{
+        .{ .pointA = .{ .x =  0.0, .y =  5.0 }, .pointB = .{ .x = -5.0, .y = -5.0 } },
+        .{ .pointA = .{ .x =  0.0, .y =  5.0 }, .pointB = .{ .x =  5.0, .y = -5.0 } },
+        .{ .pointA = .{ .x = -5.0, .y = -5.0 }, .pointB = .{ .x = -3.0, .y = -3.5 } },
+        .{ .pointA = .{ .x =  5.0, .y = -5.0 }, .pointB = .{ .x =  3.0, .y = -3.5 } },
+        .{ .pointA = .{ .x = -3.0, .y = -3.5 }, .pointB = .{ .x =  3.0, .y = -3.5 } },
+        .{ .pointA = .{ .x = -2.0, .y = -3.5 }, .pointB = .{ .x =  0.0, .y = -7.0 } },
+        .{ .pointA = .{ .x =  2.0, .y = -3.5 }, .pointB = .{ .x =  0.0, .y = -7.0 } }
+    };
+
+    const maxVelocity = 5;
+    const engineWorkingAcc = 0.1;
+    const engineIdleAcc = 0.02;
+    const rotationSpeed = 3.0;
+
+    const ShipLinesRandVelocities = struct {
+        var velocities: [7]Vector2 = undefined;
+
+        pub fn setRandVelocities() void {
+            for (&velocities) |*value| {
+                value.x = (Asteroid.rnd.random().float(f32) - 0.5) * 2;
+                value.y = (Asteroid.rnd.random().float(f32) - 0.5) * 2;
+            }
+        }
+    };
+
+    fn init(self: *Ship) void {
+        std.mem.copyForwards(Line, &self.shipLines, &defaultShipLines);
+        self.pos.x = 0;
+        self.pos.y = 0;
+        self.vel.x = 0;
+        self.vel.y = 0;
+        self.acc.x = 0;
+        self.acc.y = 0;
+        self.rot = 0;
+        self.angleWhenEngineLastUsed = 0;
+        self.engineWorking = false;
+        self.collided = false;
+    }
+
+    fn hasCollided(self: *Ship) void {
+        if (self.collided) {
+            return;
+        }
+
+        self.collided = true;
+        self.acc = .{ .x = 0, .y = 0 };
+        self.vel = .{ .x = 0, .y = 0 };
+        self.engineWorking = false;
+        ShipLinesRandVelocities.setRandVelocities();
+    }
+
+    fn update(self: *Ship) void {
+        if (self.collided) {
+            for (&self.shipLines, 0..) |*line, i| {
+                line.pointA = rlm.vector2Add(
+                    line.pointA,
+                    rlm.vector2Scale(ShipLinesRandVelocities.velocities[i], game.deltaTimeNormalized())
+                ); 
+                line.pointB = rlm.vector2Add(
+                    line.pointB,
+                    rlm.vector2Scale(ShipLinesRandVelocities.velocities[i], game.deltaTimeNormalized())
+                ); 
+            }
+        }
+
+        const isAtMaxVel =
+            (math.pow(f32, self.vel.x, 2) + math.pow(f32, self.vel.y, 2)
+            >= Ship.maxVelocity * Ship.maxVelocity);
+
+        const applyAccelerationCondition = !(isAtMaxVel and
+            (@abs(self.vel.x + self.acc.x * 0.5) > @abs(self.vel.x)
+            or @abs(self.vel.y + self.acc.y * 0.5) > @abs(self.vel.y)));
+
+        if (applyAccelerationCondition) {
+            self.vel.x += self.acc.x * 0.5 * game.deltaTimeNormalized();
+            self.vel.y += self.acc.y * 0.5 * game.deltaTimeNormalized();
+        }
+
+        self.pos.x += self.vel.x * game.deltaTimeNormalized();
+        self.pos.y += self.vel.y * game.deltaTimeNormalized();
+
+        if (applyAccelerationCondition) {
+            self.vel.x += self.acc.x * 0.5 * game.deltaTimeNormalized();
+            self.vel.y += self.acc.y * 0.5 * game.deltaTimeNormalized();
+        }
+
+        if (self.pos.x < game.leftBound)
+            self.pos.x = game.rightBound;
+
+        if (self.pos.x > game.rightBound)
+            self.pos.x = game.leftBound;
+
+        if (self.pos.y < game.topBound)
+            self.pos.y = game.bottomBound;
+
+        if (self.pos.y > game.bottomBound)
+            self.pos.y = game.topBound;
+    }
+
+    fn draw(self: *Ship) void {
+        const FrameCount = struct {
+            var frameCount: i32 = 0;
+            var drawFire: bool = true;
+
+            pub fn update() void {
+                frameCount += 1;
+
+                if (frameCount == 3) {
+                    frameCount = 0;
+                    drawFire = !drawFire;
+                }
+            }
+        };
+
+        FrameCount.update();
+
+        var shipLines: [7]Line = undefined;
+        std.mem.copyForwards(Line, &shipLines, self.shipLines[0..]);
+
+        for (&shipLines) |*line| {
+            line.pointA = rlm.vector2Add(ship.pos, rlm.vector2Rotate(line.pointA, ship.rot));
+            line.pointB = rlm.vector2Add(ship.pos, rlm.vector2Rotate(line.pointB, ship.rot));
+            line.pointA = rescaleVec2ToWindowDims(line.pointA);
+            line.pointB = rescaleVec2ToWindowDims(line.pointB);
+        }
+
+        const thickness = 1.0;
+
+        for (shipLines[0..5]) |line| {
+            rl.drawLineEx(line.pointA, line.pointB, thickness, rl.Color.white);
+        }
+
+        if (ship.engineWorking and FrameCount.drawFire) {
+            rl.drawLineEx(shipLines[5].pointA, shipLines[5].pointB, thickness, rl.Color.white);
+            rl.drawLineEx(shipLines[6].pointA, shipLines[6].pointB, thickness, rl.Color.white);
+        }
+    }
+
+    shipLines: [7]Line,
+    pos: Vector2,
+    vel: Vector2,
+    acc: Vector2,
+    rot: f32,
+    angleWhenEngineLastUsed: f32,
+    engineWorking: bool,
+    collided: bool
+};
+
+var ship: Ship = undefined;
 
 const Asteroid = struct {
     const Size = enum {
@@ -87,9 +221,9 @@ const Asteroid = struct {
 
     fn speedMultiplier(size: Size) f32 {
         return switch (size) {
-            .small => 2.0,
-            .medium => 1.5,
-            .large => 1.0
+            .small => 1.5,
+            .medium => 1.0,
+            .large => 0.8
         };
     }
 
@@ -130,26 +264,24 @@ const Asteroid = struct {
             astr.pos.x = (rnd.random().float(f32) - 0.5) * (game.rightBound + @abs(game.leftBound));
             astr.pos.y = game.topBound - radius(astr.size);
             astr.velocity.x = (rnd.random().float(f32) - 0.5) * 2;
-            astr.velocity.y = rnd.random().float(f32);
+            astr.velocity.y = (1 - astr.velocity.x);
         } else if (astr.spawnSide == .bottom) {
-            astr.pos.x = (rnd.random().float(f32) - 0.5) * (game.bottomBound + @abs(game.topBound));
+            astr.pos.x = (rnd.random().float(f32) - 0.5) * (game.rightBound + @abs(game.leftBound));
             astr.pos.y = game.bottomBound + radius(astr.size);
             astr.velocity.x = (rnd.random().float(f32) - 0.5) * 2;
-            astr.velocity.y = rnd.random().float(f32) * (-1);
+            astr.velocity.y = (1 - astr.velocity.x) * (-1);
         } else if (astr.spawnSide == .left) {
             astr.pos.x = game.leftBound - radius(astr.size);
-            astr.pos.y = (rnd.random().float(f32) - 0.5) * (game.topBound + @abs(game.bottomBound));
+            astr.pos.y = (rnd.random().float(f32) - 0.5) * (game.bottomBound + @abs(game.topBound));
             astr.velocity.x = rnd.random().float(f32);
-            astr.velocity.y = (rnd.random().float(f32) - 0.5) * 2;
+            astr.velocity.y = (1 - astr.velocity.x);
         } else if (astr.spawnSide == .right) {
             astr.pos.x = game.rightBound + radius(astr.size);
-            astr.pos.y = (rnd.random().float(f32) - 0.5) * (game.rightBound + @abs(game.leftBound));
+            astr.pos.y = (rnd.random().float(f32) - 0.5) * (game.bottomBound + @abs(game.topBound));
             astr.velocity.x = rnd.random().float(f32) * (-1);
-            astr.velocity.y = (rnd.random().float(f32) - 0.5) * 2;
+            astr.velocity.y = (1 - astr.velocity.x) * (-1);
         }
 
-        astr.velocity.x += 0.3;
-        astr.velocity.y += 0.3;
         astr.velocity.x *= speedMultiplier(astr.size);
         astr.velocity.y *= speedMultiplier(astr.size);
 
@@ -198,15 +330,19 @@ const Asteroid = struct {
     }
 
     fn update(self: *@This()) void {
-        self.*.pos.x += self.velocity.x * game.deltaTimeNormalized();
-        self.*.pos.y += self.velocity.y * game.deltaTimeNormalized();
+        self.pos.x += self.velocity.x * game.deltaTimeNormalized();
+        self.pos.y += self.velocity.y * game.deltaTimeNormalized();
 
-        if ((self.*.spawnSide == .top and checkIfOutOfBounds(self, false, true, true, true)) or
-            (self.*.spawnSide == .bottom and checkIfOutOfBounds(self, true, false, true, true)) or
-            (self.*.spawnSide == .left and checkIfOutOfBounds(self, true, true, false, true)) or
-            (self.*.spawnSide == .right and checkIfOutOfBounds(self, true, true, true, false)))
+        if ((self.spawnSide == .top and checkIfOutOfBounds(self, false, true, true, true)) or
+            (self.spawnSide == .bottom and checkIfOutOfBounds(self, true, false, true, true)) or
+            (self.spawnSide == .left and checkIfOutOfBounds(self, true, true, false, true)) or
+            (self.spawnSide == .right and checkIfOutOfBounds(self, true, true, true, false)))
         {
             self.* = new();
+        }
+
+        if (rl.math.vector2Distance(self.pos, ship.pos) <= radius(self.size)) {
+            ship.hasCollided();
         }
     }
 
@@ -278,7 +414,7 @@ const Asteroid = struct {
     spawnSide: SpawnSide,
 };
 
-const numAsteroids = 10;
+const numAsteroids = 30;
 var asteroids: [numAsteroids]Asteroid = undefined;
 
 pub fn init() void {
@@ -303,14 +439,7 @@ pub fn init() void {
 
     game.deltaTime = 0;
 
-    ship.pos.x = 0;
-    ship.pos.y = 0;
-    ship.vel.x = 0;
-    ship.vel.y = 0;
-    ship.acc.x = 0;
-    ship.acc.y = 0;
-    ship.rot = 0;
-    ship.angleWhenEngineLastUsed = 0;
+    ship.init();
 
     for (asteroids[0..]) |*astr| {
         astr.* = Asteroid.new();
@@ -318,53 +447,28 @@ pub fn init() void {
 }
 
 pub fn update() void {
-    const isAtMaxVel =
-        (math.pow(f32, ship.vel.x, 2) + math.pow(f32, ship.vel.y, 2)
-        >= Ship.maxVelocity * Ship.maxVelocity);
-
-    if (!(isAtMaxVel and
-        (@abs(ship.vel.x + ship.acc.x * 0.5) > @abs(ship.vel.x)
-        or @abs(ship.vel.y + ship.acc.y * 0.5) > @abs(ship.vel.y))))
-    {
-        ship.vel.x += ship.acc.x * 0.5 * game.deltaTimeNormalized();
-        ship.vel.y += ship.acc.y * 0.5 * game.deltaTimeNormalized();
-    }
-
-    ship.pos.x += ship.vel.x * game.deltaTimeNormalized();
-    ship.pos.y += ship.vel.y * game.deltaTimeNormalized();
-
-    if (!(isAtMaxVel and
-        (@abs(ship.vel.x + ship.acc.x * 0.5) > @abs(ship.vel.x)
-        or @abs(ship.vel.y + ship.acc.y * 0.5) > @abs(ship.vel.y))))
-    {
-        ship.vel.x += ship.acc.x * 0.5 * game.deltaTimeNormalized();
-        ship.vel.y += ship.acc.y * 0.5 * game.deltaTimeNormalized();
-    }
-
-    if (ship.pos.x < game.leftBound)
-        ship.pos.x = game.rightBound;
-
-    if (ship.pos.x > game.rightBound)
-        ship.pos.x = game.leftBound;
-
-    if (ship.pos.y < game.topBound)
-        ship.pos.y = game.bottomBound;
-
-    if (ship.pos.y > game.bottomBound)
-        ship.pos.y = game.topBound;
+    ship.update();
 
     for (asteroids[0..]) |*astr| {
-        astr.*.update();
+        astr.update();
     }
 }
 
 fn input() void {
     rl.pollInputEvents();
 
+    if (ship.collided) {
+        if (rl.isKeyDown(.key_space)) {
+            ship.init();
+        }
+
+        return;
+    }
+
     if (rl.isKeyDown(.key_left)) {
-        ship.rot -= math.degreesToRadians(Ship.rotationSpeed);
+        ship.rot -= math.degreesToRadians(Ship.rotationSpeed) * game.deltaTimeNormalized();
     } else if (rl.isKeyDown(.key_right)) {
-        ship.rot += math.degreesToRadians(Ship.rotationSpeed);
+        ship.rot += math.degreesToRadians(Ship.rotationSpeed) * game.deltaTimeNormalized();
     }
 
     const Proportions = struct {
@@ -410,45 +514,6 @@ fn rescaleVec2ToWindowDims(vec: Vector2) Vector2 {
     return result;
 }
 
-fn drawShip() void {
-    const FrameCount = struct {
-        var frameCount: i32 = 0;
-        var drawFire: bool = true;
-
-        pub fn update() void {
-            frameCount += 1;
-
-            if (frameCount == 3) {
-                frameCount = 0;
-                drawFire = !drawFire;
-            }
-        }
-    };
-
-    FrameCount.update();
-
-    var shipPoints: [8]Vector2 = undefined;
-    std.mem.copyForwards(Vector2, &shipPoints, Ship.shipPoints[0..]);
-
-    for (&shipPoints) |*point| {
-        point.* = rlm.vector2Add(ship.pos, rlm.vector2Rotate(point.*, ship.rot));
-        point.* = rescaleVec2ToWindowDims(point.*);
-    }
-
-    const thickness = 1.0;
-
-    rl.drawLineEx(shipPoints[0], shipPoints[1], thickness, rl.Color.white);
-    rl.drawLineEx(shipPoints[0], shipPoints[2], thickness, rl.Color.white);
-    rl.drawLineEx(shipPoints[1], shipPoints[3], thickness, rl.Color.white);
-    rl.drawLineEx(shipPoints[2], shipPoints[4], thickness, rl.Color.white);
-    rl.drawLineEx(shipPoints[3], shipPoints[4], thickness, rl.Color.white);
-
-    if (ship.engineWorking and FrameCount.drawFire) {
-        rl.drawLineEx(shipPoints[5], shipPoints[7], thickness, rl.Color.white);
-        rl.drawLineEx(shipPoints[6], shipPoints[7], thickness, rl.Color.white);
-    }
-}
-
 fn drawAsteroids() void {
     for (asteroids) |astr| {
         for (0..astr.points.len - 1) |i| {
@@ -471,10 +536,17 @@ fn drawAsteroids() void {
 
 pub fn main() !void {
     rl.setConfigFlags(.{ .vsync_hint = true });
-    rl.initWindow(rl.getScreenWidth(), rl.getScreenHeight(), "Asteroids");
+
+    const width = 1280;
+    const height = 960;
+    rl.initWindow(width, height, "Asteroids");
     defer rl.closeWindow();
-    rl.toggleFullscreen();
-    rl.setWindowSize(rl.getScreenWidth(), rl.getScreenHeight());
+    rl.setWindowSize(width, height);
+
+    // rl.initWindow(rl.getScreenWidth(), rl.getScreenHeight(), "Asteroids");
+    // defer rl.closeWindow();
+    // rl.toggleFullscreen();
+    // rl.setWindowSize(rl.getScreenWidth(), rl.getScreenHeight());
 
     rl.setTargetFPS(60);
 
@@ -494,7 +566,7 @@ pub fn main() !void {
         defer rl.endDrawing();
 
         rl.clearBackground(rl.Color.black);
-        drawShip();
+        ship.draw();
         drawAsteroids();
     }
 }
