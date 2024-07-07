@@ -18,6 +18,29 @@ const Game = struct {
 
     deltaTime: f32,
 
+    fn init(self: *Game) void {
+        self.bottomBound = 150;
+        self.topBound = -150;
+
+        const gameWidth =
+            (@as(f32, @floatFromInt(rl.getScreenWidth()))
+             / @as(f32, @floatFromInt(rl.getScreenHeight())))
+            * (self.bottomBound + @abs(self.topBound));
+
+        self.leftBound = -gameWidth / 2;
+        self.rightBound = gameWidth / 2;
+
+        self.winWidthOverGameWidth =
+            @as(f32, @floatFromInt(rl.getScreenWidth()))
+            / (self.rightBound + @abs(self.leftBound));
+
+        self.winHeightOverGameHeight =
+            @as(f32, @floatFromInt(rl.getScreenHeight()))
+            / (self.bottomBound + @abs(self.topBound));
+
+        self.deltaTime = 0;
+    }
+
     /// Normalizes delta time so when the fps is 60, the return value is 1
     fn deltaTimeNormalized(self: @This()) f32 {
         return self.deltaTime * 60;
@@ -31,11 +54,6 @@ const Ship = struct {
         pointA: Vector2,
         pointB: Vector2
     };
-    // rl.drawLineEx(shipPoints[0], shipPoints[1], thickness, rl.Color.white);
-    // rl.drawLineEx(shipPoints[0], shipPoints[2], thickness, rl.Color.white);
-    // rl.drawLineEx(shipPoints[1], shipPoints[3], thickness, rl.Color.white);
-    // rl.drawLineEx(shipPoints[2], shipPoints[4], thickness, rl.Color.white);
-    // rl.drawLineEx(shipPoints[3], shipPoints[4], thickness, rl.Color.white);
 
     const defaultShipLines: [7]Line = .{
         .{ .pointA = .{ .x =  0.0, .y =  5.0 }, .pointB = .{ .x = -5.0, .y = -5.0 } },
@@ -55,10 +73,10 @@ const Ship = struct {
     const ShipLinesRandVelocities = struct {
         var velocities: [7]Vector2 = undefined;
 
-        pub fn setRandVelocities() void {
+        fn setRandVelocities() void {
             for (&velocities) |*value| {
-                value.x = (Asteroid.rnd.random().float(f32) - 0.5) * 2;
-                value.y = (Asteroid.rnd.random().float(f32) - 0.5) * 2;
+                value.x = (Asteroid.rnd.random().float(f32) - 0.5);
+                value.y = (Asteroid.rnd.random().float(f32) - 0.5);
             }
         }
     };
@@ -84,9 +102,17 @@ const Ship = struct {
 
         self.collided = true;
         self.acc = .{ .x = 0, .y = 0 };
-        self.vel = .{ .x = 0, .y = 0 };
+        // self.vel = .{ .x = 0, .y = 0 };
         self.engineWorking = false;
         ShipLinesRandVelocities.setRandVelocities();
+    }
+
+    fn rotateLeftwards(self: *Ship) void {
+        self.rot -= math.degreesToRadians(rotationSpeed) * game.deltaTimeNormalized();
+    }
+
+    fn rotateRightwards(self: *Ship) void {
+        self.rot += math.degreesToRadians(rotationSpeed) * game.deltaTimeNormalized();
     }
 
     fn update(self: *Ship) void {
@@ -100,6 +126,21 @@ const Ship = struct {
                     line.pointB,
                     rlm.vector2Scale(ShipLinesRandVelocities.velocities[i], game.deltaTimeNormalized())
                 ); 
+            }
+        } else if (self.engineWorking) {
+            ship.acc.x = -@sin(ship.rot) * engineWorkingAcc;
+            ship.acc.y = @cos(ship.rot) * engineWorkingAcc;
+        } else {
+            if (ship.vel.x > engineIdleAcc or ship.vel.x < -engineIdleAcc) {
+                ship.acc.x = -engineIdleAcc * @cos(ship.angleWhenEngineLastUsed);
+            } else {
+                ship.acc.x = 0;
+            }
+
+            if (ship.vel.y > engineIdleAcc or ship.vel.y < -engineIdleAcc) {
+                ship.acc.y = -engineIdleAcc * @sin(ship.angleWhenEngineLastUsed);
+            } else {
+                ship.acc.y = 0;
             }
         }
 
@@ -124,17 +165,21 @@ const Ship = struct {
             self.vel.y += self.acc.y * 0.5 * game.deltaTimeNormalized();
         }
 
-        if (self.pos.x < game.leftBound)
+        if (self.pos.x < game.leftBound) {  
             self.pos.x = game.rightBound;
+        }
 
-        if (self.pos.x > game.rightBound)
+        if (self.pos.x > game.rightBound) {  
             self.pos.x = game.leftBound;
+        }
 
-        if (self.pos.y < game.topBound)
+        if (self.pos.y < game.topBound) {  
             self.pos.y = game.bottomBound;
+        }
 
-        if (self.pos.y > game.bottomBound)
+        if (self.pos.y > game.bottomBound) {  
             self.pos.y = game.topBound;
+        }
     }
 
     fn draw(self: *Ship) void {
@@ -142,7 +187,7 @@ const Ship = struct {
             var frameCount: i32 = 0;
             var drawFire: bool = true;
 
-            pub fn update() void {
+            fn update() void {
                 frameCount += 1;
 
                 if (frameCount == 3) {
@@ -160,8 +205,8 @@ const Ship = struct {
         for (&shipLines) |*line| {
             line.pointA = rlm.vector2Add(ship.pos, rlm.vector2Rotate(line.pointA, ship.rot));
             line.pointB = rlm.vector2Add(ship.pos, rlm.vector2Rotate(line.pointB, ship.rot));
-            line.pointA = rescaleVec2ToWindowDims(line.pointA);
-            line.pointB = rescaleVec2ToWindowDims(line.pointB);
+            line.pointA = convertFromGameToWindowCoords(line.pointA);
+            line.pointB = convertFromGameToWindowCoords(line.pointB);
         }
 
         const thickness = 1.0;
@@ -183,7 +228,7 @@ const Ship = struct {
     rot: f32,
     angleWhenEngineLastUsed: f32,
     engineWorking: bool,
-    collided: bool
+    collided: bool,
 };
 
 var ship: Ship = undefined;
@@ -202,7 +247,7 @@ const Asteroid = struct {
         right
     };
 
-    pub fn radius(size: Size) f32 {
+    fn radius(size: Size) f32 {
         return switch (size) {
             .small => 4,
             .medium => 8,
@@ -227,7 +272,7 @@ const Asteroid = struct {
         };
     }
 
-    pub fn pointsOnCircle(size: Size) *const [8]Vector2 {
+    fn pointsOnCircle(size: Size) *const [8]Vector2 {
         return switch (size) {
             .small => &pointsOnCircleSmallAst,
             .medium => &pointsOnCircleMediumAst,
@@ -235,11 +280,27 @@ const Asteroid = struct {
         };
     }
 
-    pub fn initStruct() void {
+    var pointsOnCircleSmallAst: [8]Vector2 = undefined;
+    var pointsOnCircleMediumAst: [8]Vector2 = undefined;
+    var pointsOnCircleLargeAst: [8]Vector2 = undefined;
+
+    fn initStruct() void {
         rnd = rand.DefaultPrng.init(@as(u64, @bitCast(std.time.milliTimestamp())));
+
+        for (0..8) |i| {
+            pointsOnCircleSmallAst[i] =
+                .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.small),
+                   .y = @sin(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.small) };
+            pointsOnCircleMediumAst[i] =
+                .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.medium),
+                   .y = @sin(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.medium) };
+            pointsOnCircleLargeAst[i] =
+                .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.large),
+                   .y = @sin(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.large) };
+        }
     }
 
-    pub fn new() Asteroid {
+    fn new() Asteroid {
         var astr: Asteroid = .{
             .points = undefined,
             .pos = undefined,
@@ -309,27 +370,27 @@ const Asteroid = struct {
         return astr;
     }
 
-    fn checkIfOutOfBounds(self: *@This(), top: bool, bottom: bool, left: bool, right: bool) bool {
-        if (top and self.*.pos.y < game.topBound) {
+    fn checkIfOutOfBounds(self: *Asteroid, top: bool, bottom: bool, left: bool, right: bool) bool {
+        if (top and self.pos.y < game.topBound) {
             return true;
         }
 
-        if (bottom and self.*.pos.y > game.bottomBound) {
+        if (bottom and self.pos.y > game.bottomBound) {
             return true;
         }
 
-        if (left and self.*.pos.x < game.leftBound) {
+        if (left and self.pos.x < game.leftBound) {
             return true;
         }
 
-        if (right and self.*.pos.x > game.rightBound) {
+        if (right and self.pos.x > game.rightBound) {
             return true;
         }
 
         return false;
     }
 
-    fn update(self: *@This()) void {
+    fn update(self: *Asteroid) void {
         self.pos.x += self.velocity.x * game.deltaTimeNormalized();
         self.pos.y += self.velocity.y * game.deltaTimeNormalized();
 
@@ -346,65 +407,6 @@ const Asteroid = struct {
         }
     }
 
-    // Asteroid shape is generated by adding radnom values to the already known coordinates of points
-    // on a circle
-    const pointsOnCircleSmallAst: [8]Vector2 = .{
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 0)) * radius(.small),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 0)) * radius(.small) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 1)) * radius(.small),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 1)) * radius(.small) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 2)) * radius(.small),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 2)) * radius(.small) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 3)) * radius(.small),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 3)) * radius(.small) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 4)) * radius(.small),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 4)) * radius(.small) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 5)) * radius(.small),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 5)) * radius(.small) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 6)) * radius(.small),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 6)) * radius(.small) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 7)) * radius(.small),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 7)) * radius(.small) }
-    };
-
-    const pointsOnCircleMediumAst: [8]Vector2 = .{
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 0)) * radius(.medium),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 0)) * radius(.medium) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 1)) * radius(.medium),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 1)) * radius(.medium) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 2)) * radius(.medium),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 2)) * radius(.medium) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 3)) * radius(.medium),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 3)) * radius(.medium) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 4)) * radius(.medium),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 4)) * radius(.medium) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 5)) * radius(.medium),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 5)) * radius(.medium) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 6)) * radius(.medium),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 6)) * radius(.medium) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 7)) * radius(.medium),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 7)) * radius(.medium) }
-    };
-
-    const pointsOnCircleLargeAst: [8]Vector2 = .{
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 0)) * radius(.large),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 0)) * radius(.large) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 1)) * radius(.large),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 1)) * radius(.large) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 2)) * radius(.large),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 2)) * radius(.large) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 3)) * radius(.large),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 3)) * radius(.large) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 4)) * radius(.large),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 4)) * radius(.large) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 5)) * radius(.large),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 5)) * radius(.large) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 6)) * radius(.large),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 6)) * radius(.large) },
-        .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * 7)) * radius(.large),
-           .y = @sin(math.degreesToRadians(360.0 / 8.0 * 7)) * radius(.large) }
-    };
-
     var rnd: rand.Xoshiro256 = undefined;
 
     points: [8]Vector2,
@@ -417,28 +419,8 @@ const Asteroid = struct {
 const numAsteroids = 30;
 var asteroids: [numAsteroids]Asteroid = undefined;
 
-pub fn init() void {
-    game.bottomBound = 150;
-    game.topBound = -150;
-
-    const gameWidth =
-        (@as(f32, @floatFromInt(rl.getScreenWidth()))
-         / @as(f32, @floatFromInt(rl.getScreenHeight())))
-        * (game.bottomBound + @abs(game.topBound));
-
-    game.leftBound = -gameWidth / 2;
-    game.rightBound = gameWidth / 2;
-
-    game.winWidthOverGameWidth =
-        @as(f32, @floatFromInt(rl.getScreenWidth()))
-        / (game.rightBound + @abs(game.leftBound));
-
-    game.winHeightOverGameHeight =
-        @as(f32, @floatFromInt(rl.getScreenHeight()))
-        / (game.bottomBound + @abs(game.topBound));
-
-    game.deltaTime = 0;
-
+fn init() void {
+    game.init();
     ship.init();
 
     for (asteroids[0..]) |*astr| {
@@ -446,7 +428,7 @@ pub fn init() void {
     }
 }
 
-pub fn update() void {
+fn update() void {
     ship.update();
 
     for (asteroids[0..]) |*astr| {
@@ -455,8 +437,6 @@ pub fn update() void {
 }
 
 fn input() void {
-    rl.pollInputEvents();
-
     if (ship.collided) {
         if (rl.isKeyDown(.key_space)) {
             ship.init();
@@ -466,48 +446,22 @@ fn input() void {
     }
 
     if (rl.isKeyDown(.key_left)) {
-        ship.rot -= math.degreesToRadians(Ship.rotationSpeed) * game.deltaTimeNormalized();
+        ship.rotateLeftwards();
     } else if (rl.isKeyDown(.key_right)) {
-        ship.rot += math.degreesToRadians(Ship.rotationSpeed) * game.deltaTimeNormalized();
+        ship.rotateRightwards();
     }
 
-    const Proportions = struct {
-        var xOverTotalVel: f32 = 0;
-        var yOverTotalVel: f32 = 0;
-    };
-
     if (rl.isKeyDown(.key_up)) {
-        ship.acc.x = -@sin(ship.rot) * Ship.engineWorkingAcc;
-        ship.acc.y = @cos(ship.rot) * Ship.engineWorkingAcc;
-        // ship.angleWhenEngineLastUsed = ship.rot;
-        ship.angleWhenEngineLastUsed = math.atan(-ship.vel.y / ship.vel.x);
-
-        Proportions.xOverTotalVel =
-            ship.vel.x / @sqrt(ship.vel.x*ship.vel.x + ship.vel.y*ship.vel.y);
-        Proportions.yOverTotalVel =
-            ship.vel.y / @sqrt(ship.vel.x*ship.vel.x + ship.vel.y*ship.vel.y);
-
         ship.engineWorking = true;
-    } else {  // If engine is idle
-        // Checking if velocity is around 0 because we don't want to make the ship go backwards due to
-        // the deacceleration applied when the engine is idle
-        if (ship.vel.x > Ship.engineIdleAcc or ship.vel.x < -Ship.engineIdleAcc) {
-            ship.acc.x = -Ship.engineIdleAcc * Proportions.xOverTotalVel;
-        } else {
-            ship.acc.x = 0;
-        }
-
-        if (ship.vel.y > Ship.engineIdleAcc or ship.vel.y < -Ship.engineIdleAcc) {
-            ship.acc.y = -Ship.engineIdleAcc * Proportions.yOverTotalVel;
-        } else {
-            ship.acc.y = 0;
-        }
-
+    } else if (rl.isKeyReleased(.key_up)) {
+        ship.angleWhenEngineLastUsed = math.atan2(ship.vel.y, ship.vel.x);
+        ship.engineWorking = false;
+    } else {
         ship.engineWorking = false;
     }
 }
 
-fn rescaleVec2ToWindowDims(vec: Vector2) Vector2 {
+fn convertFromGameToWindowCoords(vec: Vector2) Vector2 {
     var result: Vector2 = undefined;
     result.x = (vec.x + game.rightBound) * game.winWidthOverGameWidth;
     result.y = (vec.y + game.bottomBound) * game.winHeightOverGameHeight;
@@ -518,16 +472,16 @@ fn drawAsteroids() void {
     for (asteroids) |astr| {
         for (0..astr.points.len - 1) |i| {
             rl.drawLineEx(
-                rescaleVec2ToWindowDims(rlm.vector2Add(astr.points[i], astr.pos)),
-                rescaleVec2ToWindowDims(rlm.vector2Add(astr.points[i+1], astr.pos)),
+                convertFromGameToWindowCoords(rlm.vector2Add(astr.points[i], astr.pos)),
+                convertFromGameToWindowCoords(rlm.vector2Add(astr.points[i+1], astr.pos)),
                 1.0,
                 rl.Color.white
             );
         }
 
         rl.drawLineEx(
-            rescaleVec2ToWindowDims(rlm.vector2Add(astr.points[0], astr.pos)),
-            rescaleVec2ToWindowDims(rlm.vector2Add(astr.points[astr.points.len - 1], astr.pos)),
+            convertFromGameToWindowCoords(rlm.vector2Add(astr.points[0], astr.pos)),
+            convertFromGameToWindowCoords(rlm.vector2Add(astr.points[astr.points.len - 1], astr.pos)),
             1.0,
             rl.Color.white
         );
@@ -537,16 +491,16 @@ fn drawAsteroids() void {
 pub fn main() !void {
     rl.setConfigFlags(.{ .vsync_hint = true });
 
-    const width = 1280;
-    const height = 960;
-    rl.initWindow(width, height, "Asteroids");
-    defer rl.closeWindow();
-    rl.setWindowSize(width, height);
-
-    // rl.initWindow(rl.getScreenWidth(), rl.getScreenHeight(), "Asteroids");
+    // const width = 1280;
+    // const height = 960;
+    // rl.initWindow(width, height, "Asteroids");
     // defer rl.closeWindow();
-    // rl.toggleFullscreen();
-    // rl.setWindowSize(rl.getScreenWidth(), rl.getScreenHeight());
+    // rl.setWindowSize(width, height);
+
+    rl.initWindow(rl.getScreenWidth(), rl.getScreenHeight(), "Asteroids");
+    defer rl.closeWindow();
+    rl.toggleFullscreen();
+    rl.setWindowSize(rl.getScreenWidth(), rl.getScreenHeight());
 
     rl.setTargetFPS(60);
 
