@@ -8,6 +8,8 @@ const Vector2 = rl.Vector2;
 const Matrix  = rl.Matrix;
 
 const Game = struct {
+    rnd: rand.Xoshiro256,
+
     rightBound: f32,
     leftBound: f32,
     bottomBound: f32,
@@ -19,6 +21,8 @@ const Game = struct {
     deltaTime: f32,
 
     fn init(self: *Game) void {
+        self.rnd = rand.DefaultPrng.init(@as(u64, @bitCast(std.time.milliTimestamp())));
+
         self.bottomBound = 150;
         self.topBound = -150;
 
@@ -50,6 +54,37 @@ const Game = struct {
 var game: Game = undefined;
 
 const Ship = struct {
+    const Bullet = struct {
+        const bulletSpeed = 4.0;
+
+        pos: Vector2,
+        angle: f32,
+
+        fn new() Bullet {
+            const bullet: Bullet = .{ .pos = ship.pos, .angle = ship.rot, };
+            return bullet;
+        }
+
+        fn update(self: *Bullet) bool {
+            self.pos.x += bulletSpeed * @sin(-self.angle) * game.deltaTimeNormalized();
+            self.pos.y += bulletSpeed * @cos(self.angle) * game.deltaTimeNormalized();
+
+            // TODO: check if hit an asteroid
+            if (!isPosInMap(self.pos)) {
+                return false;
+            }
+
+            for (asteroids, 0..) |_, i| {
+                if (rlm.vector2Distance(asteroids[i].pos, self.pos) <= Asteroid.radius(asteroids[i].size)) {
+                    asteroids[i] = Asteroid.new();
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    };
+
     const Line = struct {
         pointA: Vector2,
         pointB: Vector2
@@ -67,22 +102,32 @@ const Ship = struct {
 
     const maxVelocity = 5;
     const engineWorkingAcc = 0.1;
-    const engineIdleAcc = 0.02;
-    const rotationSpeed = 3.0;
+    const engineIdleDrag = 0.02;
+    const rotationSpeed = 4.0;
+    const maxBullets = 10;
+
+    shipLines: [7]Line,
+    pos: Vector2,
+    vel: Vector2,
+    acc: Vector2,
+    rot: f32,
+    angleWhenEngineLastUsed: f32,
+    engineWorking: bool,
+    collided: bool,
+    bullets: std.ArrayList(Bullet),
 
     const ShipLinesRandVelocities = struct {
         var velocities: [7]Vector2 = undefined;
 
         fn setRandVelocities() void {
             for (&velocities) |*value| {
-                value.x = (Asteroid.rnd.random().float(f32) - 0.5);
-                value.y = (Asteroid.rnd.random().float(f32) - 0.5);
+                value.x = (game.rnd.random().float(f32) - 0.5);
+                value.y = (game.rnd.random().float(f32) - 0.5);
             }
         }
     };
 
-    fn init(self: *Ship) void {
-        std.mem.copyForwards(Line, &self.shipLines, &defaultShipLines);
+    fn init(self: *Ship) !void {
         self.pos.x = 0;
         self.pos.y = 0;
         self.vel.x = 0;
@@ -93,6 +138,27 @@ const Ship = struct {
         self.angleWhenEngineLastUsed = 0;
         self.engineWorking = false;
         self.collided = false;
+        self.bullets = try std.ArrayList(Bullet).initCapacity(std.heap.page_allocator, maxBullets);
+        std.mem.copyForwards(Line, &self.shipLines, &defaultShipLines);
+    }
+
+    fn deinit(self: *Ship) void {
+        self.bullets.deinit();
+    }
+
+    fn relive(self: *Ship) void {
+        self.pos.x = 0;
+        self.pos.y = 0;
+        self.vel.x = 0;
+        self.vel.y = 0;
+        self.acc.x = 0;
+        self.acc.y = 0;
+        self.rot = 0;
+        self.angleWhenEngineLastUsed = 0;
+        self.engineWorking = false;
+        self.collided = false;
+        self.bullets.clearRetainingCapacity();
+        std.mem.copyForwards(Line, &self.shipLines, &defaultShipLines);
     }
 
     fn hasCollided(self: *Ship) void {
@@ -131,14 +197,14 @@ const Ship = struct {
             ship.acc.x = -@sin(ship.rot) * engineWorkingAcc;
             ship.acc.y = @cos(ship.rot) * engineWorkingAcc;
         } else {
-            if (ship.vel.x > engineIdleAcc or ship.vel.x < -engineIdleAcc) {
-                ship.acc.x = -engineIdleAcc * @cos(ship.angleWhenEngineLastUsed);
+            if (ship.vel.x > engineIdleDrag or ship.vel.x < -engineIdleDrag) {
+                ship.acc.x = -engineIdleDrag * @cos(ship.angleWhenEngineLastUsed);
             } else {
                 ship.acc.x = 0;
             }
 
-            if (ship.vel.y > engineIdleAcc or ship.vel.y < -engineIdleAcc) {
-                ship.acc.y = -engineIdleAcc * @sin(ship.angleWhenEngineLastUsed);
+            if (ship.vel.y > engineIdleDrag or ship.vel.y < -engineIdleDrag) {
+                ship.acc.y = -engineIdleDrag * @sin(ship.angleWhenEngineLastUsed);
             } else {
                 ship.acc.y = 0;
             }
@@ -165,6 +231,21 @@ const Ship = struct {
             self.vel.y += self.acc.y * 0.5 * game.deltaTimeNormalized();
         }
 
+        var i: usize = 0;
+
+        while (i < self.bullets.items.len) {
+            if (!self.bullets.items[i].update()) {
+                _ = self.bullets.swapRemove(i);
+                continue;
+            }
+
+            i += 1;
+        }
+
+        if (self.collided) {
+            return;
+        }
+
         if (self.pos.x < game.leftBound) {  
             self.pos.x = game.rightBound;
         }
@@ -180,6 +261,29 @@ const Ship = struct {
         if (self.pos.y > game.bottomBound) {  
             self.pos.y = game.topBound;
         }
+    }
+
+    fn shoot(self: *Ship) !void {
+        const static = struct {
+            var timeUpToLastShot: f64 = undefined;
+
+            fn setTime() void {
+                timeUpToLastShot = rl.getTime();
+            }
+
+            fn timeSinceLastShot() f64 {
+                return rl.getTime() - timeUpToLastShot;
+            }
+        };
+
+        const timeBetweenShots = 0.1;
+
+        if (self.bullets.items.len == maxBullets or static.timeSinceLastShot() < timeBetweenShots) {
+            return;
+        }
+
+        try self.bullets.append(Bullet.new());
+        static.setTime();
     }
 
     fn draw(self: *Ship) void {
@@ -219,32 +323,52 @@ const Ship = struct {
             rl.drawLineEx(shipLines[5].pointA, shipLines[5].pointB, thickness, rl.Color.white);
             rl.drawLineEx(shipLines[6].pointA, shipLines[6].pointB, thickness, rl.Color.white);
         }
-    }
 
-    shipLines: [7]Line,
-    pos: Vector2,
-    vel: Vector2,
-    acc: Vector2,
-    rot: f32,
-    angleWhenEngineLastUsed: f32,
-    engineWorking: bool,
-    collided: bool,
+        const bulletLenght = 3.0;
+
+        for (self.bullets.items) |bullet| {
+            var line: Line = .{ 
+                .pointA = .{ .x = 0, .y =  bulletLenght / 2.0 },
+                .pointB = .{ .x = 0, .y = -bulletLenght / 2.0 },
+            };
+
+            line.pointA = rlm.vector2Rotate(line.pointA, bullet.angle);
+            line.pointB = rlm.vector2Rotate(line.pointB, bullet.angle);
+            line.pointA = rlm.vector2Add(line.pointA, bullet.pos);
+            line.pointB = rlm.vector2Add(line.pointB, bullet.pos);
+            line.pointA = convertFromGameToWindowCoords(line.pointA);
+            line.pointB = convertFromGameToWindowCoords(line.pointB);
+
+            rl.drawLineEx(line.pointA, line.pointB, thickness, rl.Color.white);
+        }
+    }
 };
 
 var ship: Ship = undefined;
 
 const Asteroid = struct {
+    var pointsOnCircleSmallAst: [8]Vector2 = undefined;
+    var pointsOnCircleMediumAst: [8]Vector2 = undefined;
+    var pointsOnCircleLargeAst: [8]Vector2 = undefined;
+
+    points: [8]Vector2,
+    pos: Vector2,
+    velocity: Vector2,
+    size: Size,
+    spawnSide: SpawnSide,
+
     const Size = enum {
         small,
         medium,
-        large
+        large,
     };
 
     const SpawnSide = enum {
         top,
         bottom,
         left,
-        right
+        right,
+        check_for_all,
     };
 
     fn radius(size: Size) f32 {
@@ -280,13 +404,7 @@ const Asteroid = struct {
         };
     }
 
-    var pointsOnCircleSmallAst: [8]Vector2 = undefined;
-    var pointsOnCircleMediumAst: [8]Vector2 = undefined;
-    var pointsOnCircleLargeAst: [8]Vector2 = undefined;
-
     fn initStruct() void {
-        rnd = rand.DefaultPrng.init(@as(u64, @bitCast(std.time.milliTimestamp())));
-
         for (0..8) |i| {
             pointsOnCircleSmallAst[i] =
                 .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.small),
@@ -309,7 +427,7 @@ const Asteroid = struct {
             .spawnSide = undefined
         };
 
-        const rand_int = @mod(rnd.random().int(i32), 100);
+        const rand_int = @mod(game.rnd.random().int(i32), 100);
 
         if (rand_int >= 90) {
             astr.size = .large;
@@ -319,27 +437,27 @@ const Asteroid = struct {
             astr.size = .small;
         }
 
-        astr.spawnSide = @enumFromInt(@mod(rnd.random().int(i32), 4));
+        astr.spawnSide = @enumFromInt(@mod(game.rnd.random().int(i32), 4));
 
         if (astr.spawnSide == .top) {
-            astr.pos.x = (rnd.random().float(f32) - 0.5) * (game.rightBound + @abs(game.leftBound));
+            astr.pos.x = (game.rnd.random().float(f32) - 0.5) * (game.rightBound + @abs(game.leftBound));
             astr.pos.y = game.topBound - radius(astr.size);
-            astr.velocity.x = (rnd.random().float(f32) - 0.5) * 2;
+            astr.velocity.x = (game.rnd.random().float(f32) - 0.5) * 2;
             astr.velocity.y = (1 - astr.velocity.x);
         } else if (astr.spawnSide == .bottom) {
-            astr.pos.x = (rnd.random().float(f32) - 0.5) * (game.rightBound + @abs(game.leftBound));
+            astr.pos.x = (game.rnd.random().float(f32) - 0.5) * (game.rightBound + @abs(game.leftBound));
             astr.pos.y = game.bottomBound + radius(astr.size);
-            astr.velocity.x = (rnd.random().float(f32) - 0.5) * 2;
+            astr.velocity.x = (game.rnd.random().float(f32) - 0.5) * 2;
             astr.velocity.y = (1 - astr.velocity.x) * (-1);
         } else if (astr.spawnSide == .left) {
             astr.pos.x = game.leftBound - radius(astr.size);
-            astr.pos.y = (rnd.random().float(f32) - 0.5) * (game.bottomBound + @abs(game.topBound));
-            astr.velocity.x = rnd.random().float(f32);
+            astr.pos.y = (game.rnd.random().float(f32) - 0.5) * (game.bottomBound + @abs(game.topBound));
+            astr.velocity.x = game.rnd.random().float(f32);
             astr.velocity.y = (1 - astr.velocity.x);
         } else if (astr.spawnSide == .right) {
             astr.pos.x = game.rightBound + radius(astr.size);
-            astr.pos.y = (rnd.random().float(f32) - 0.5) * (game.bottomBound + @abs(game.topBound));
-            astr.velocity.x = rnd.random().float(f32) * (-1);
+            astr.pos.y = (game.rnd.random().float(f32) - 0.5) * (game.bottomBound + @abs(game.topBound));
+            astr.velocity.x = game.rnd.random().float(f32) * (-1);
             astr.velocity.y = (1 - astr.velocity.x) * (-1);
         }
 
@@ -351,21 +469,68 @@ const Asteroid = struct {
             // coordinates to only increase since it would be weird when
             // checking for collision as center wouldn't really be in center
             const multiplyXby1orMinus1: f32 =
-                if (rnd.random().boolean()) -1 else 1;
+                if (game.rnd.random().boolean()) -1 else 1;
 
             const multiplyYby1orMinus1: f32 =
-                if (rnd.random().boolean()) -1 else 1;
+                if (game.rnd.random().boolean()) -1 else 1;
 
             astr.points[i].x =
                 Asteroid.pointsOnCircle(astr.size)[i].x
-                + multiplyXby1orMinus1 * rnd.random().float(f32)
+                + multiplyXby1orMinus1 * game.rnd.random().float(f32)
                 * randomMultiplier(astr.size);
 
             astr.points[i].y =
                 Asteroid.pointsOnCircle(astr.size)[i].y
-                + multiplyYby1orMinus1 * rnd.random().float(f32)
+                + multiplyYby1orMinus1 * game.rnd.random().float(f32)
                 * randomMultiplier(astr.size);
         }
+
+        return astr;
+    }
+
+    fn newWithPos(pos: Vector2) Asteroid {
+        var astr: Asteroid = .{
+            .points = undefined,
+            .pos = pos,
+            .velocity = undefined,
+            .size = undefined,
+            .spawnSide = undefined
+        };
+
+        for (astr.points, 0..) |_, i| {
+            const multiplyXby1orMinus1: f32 =
+                if (game.rnd.random().boolean()) -1 else 1;
+
+            const multiplyYby1orMinus1: f32 =
+                if (game.rnd.random().boolean()) -1 else 1;
+
+            astr.points[i].x =
+                Asteroid.pointsOnCircle(astr.size)[i].x
+                + multiplyXby1orMinus1 * game.rnd.random().float(f32)
+                * randomMultiplier(astr.size);
+
+            astr.points[i].y =
+                Asteroid.pointsOnCircle(astr.size)[i].y
+                + multiplyYby1orMinus1 * game.rnd.random().float(f32)
+                * randomMultiplier(astr.size);
+        }
+
+        const rand_int = @mod(game.rnd.random().int(i32), 100);
+
+        if (rand_int >= 90) {
+            astr.size = .large;
+        } else if (rand_int >= 20) {
+            astr.size = .medium;
+        } else {
+            astr.size = .small;
+        }
+
+        astr.velocity.x = game.rnd.random().float(f32);
+        astr.velocity.y = 1 - astr.velocity.x;
+        astr.velocity.x *= speedMultiplier(astr.size);
+        astr.velocity.y *= speedMultiplier(astr.size);
+
+        astr.spawnSide = .check_for_all;
 
         return astr;
     }
@@ -394,34 +559,27 @@ const Asteroid = struct {
         self.pos.x += self.velocity.x * game.deltaTimeNormalized();
         self.pos.y += self.velocity.y * game.deltaTimeNormalized();
 
-        if ((self.spawnSide == .top and checkIfOutOfBounds(self, false, true, true, true)) or
-            (self.spawnSide == .bottom and checkIfOutOfBounds(self, true, false, true, true)) or
-            (self.spawnSide == .left and checkIfOutOfBounds(self, true, true, false, true)) or
-            (self.spawnSide == .right and checkIfOutOfBounds(self, true, true, true, false)))
-        {
-            self.* = new();
-        }
-
         if (rl.math.vector2Distance(self.pos, ship.pos) <= radius(self.size)) {
             ship.hasCollided();
         }
+
+        if ((self.spawnSide == .top and self.checkIfOutOfBounds(false, true, true, true)) or
+            (self.spawnSide == .bottom and self.checkIfOutOfBounds(true, false, true, true)) or
+            (self.spawnSide == .left and self.checkIfOutOfBounds(true, true, false, true)) or
+            (self.spawnSide == .right and self.checkIfOutOfBounds(true, true, true, false)) or
+            (self.spawnSide == .check_for_all and self.checkIfOutOfBounds(true, true, true, true)))
+        {
+            self.* = new();
+        }
     }
-
-    var rnd: rand.Xoshiro256 = undefined;
-
-    points: [8]Vector2,
-    pos: Vector2,
-    velocity: Vector2,
-    size: Size,
-    spawnSide: SpawnSide,
 };
 
 const numAsteroids = 30;
 var asteroids: [numAsteroids]Asteroid = undefined;
 
-fn init() void {
+fn init() !void {
     game.init();
-    ship.init();
+    try ship.init();
 
     for (asteroids[0..]) |*astr| {
         astr.* = Asteroid.new();
@@ -436,10 +594,10 @@ fn update() void {
     }
 }
 
-fn input() void {
+fn input() !void {
     if (ship.collided) {
-        if (rl.isKeyDown(.key_space)) {
-            ship.init();
+        if (rl.isKeyDown(.key_enter)) {
+            ship.relive();
         }
 
         return;
@@ -459,13 +617,10 @@ fn input() void {
     } else {
         ship.engineWorking = false;
     }
-}
 
-fn convertFromGameToWindowCoords(vec: Vector2) Vector2 {
-    var result: Vector2 = undefined;
-    result.x = (vec.x + game.rightBound) * game.winWidthOverGameWidth;
-    result.y = (vec.y + game.bottomBound) * game.winHeightOverGameHeight;
-    return result;
+    if (rl.isKeyDown(.key_space)) {
+        try ship.shoot();
+    }
 }
 
 fn drawAsteroids() void {
@@ -488,30 +643,47 @@ fn drawAsteroids() void {
     }
 }
 
+fn convertFromGameToWindowCoords(vec: Vector2) Vector2 {
+    var result: Vector2 = undefined;
+    result.x = (vec.x + game.rightBound) * game.winWidthOverGameWidth;
+    result.y = (vec.y + game.bottomBound) * game.winHeightOverGameHeight;
+    return result;
+}
+
+fn isPosInMap(pos: Vector2) bool {
+    if (pos.x < game.leftBound or pos.x > game.rightBound or
+        pos.y < game.topBound or pos.y > game.bottomBound)
+    {
+        return false;
+    }
+
+    return true;
+}
+
 pub fn main() !void {
     rl.setConfigFlags(.{ .vsync_hint = true });
 
-    // const width = 1280;
-    // const height = 960;
-    // rl.initWindow(width, height, "Asteroids");
-    // defer rl.closeWindow();
-    // rl.setWindowSize(width, height);
-
-    rl.initWindow(rl.getScreenWidth(), rl.getScreenHeight(), "Asteroids");
+    const width = 1280;
+    const height = 960;
+    rl.initWindow(width, height, "Asteroids");
     defer rl.closeWindow();
-    rl.toggleFullscreen();
-    rl.setWindowSize(rl.getScreenWidth(), rl.getScreenHeight());
+    rl.setWindowSize(width, height);
+
+    // rl.initWindow(rl.getScreenWidth(), rl.getScreenHeight(), "Asteroids");
+    // defer rl.closeWindow();
+    // rl.toggleFullscreen();
+    // rl.setWindowSize(rl.getScreenWidth(), rl.getScreenHeight());
 
     rl.setTargetFPS(60);
 
     Asteroid.initStruct();
-    init();
+    try init();
 
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
         game.deltaTime = rl.getFrameTime();
         // Update
         //---------------------------------------------------------------------
-        input();
+        try input();
         update();
 
         // Draw
@@ -523,4 +695,6 @@ pub fn main() !void {
         ship.draw();
         drawAsteroids();
     }
+
+    ship.deinit();
 }
