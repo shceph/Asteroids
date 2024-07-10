@@ -7,7 +7,15 @@ const rlm = rl.math;
 const Vector2 = rl.Vector2;
 const Matrix  = rl.Matrix;
 
+const Line = struct {
+    pointA: Vector2,
+    pointB: Vector2
+};
+
 const Game = struct {
+    const windowWidth = 1280;
+    const windowHeight = 960;
+
     rnd: rand.Xoshiro256,
 
     rightBound: f32,
@@ -20,16 +28,23 @@ const Game = struct {
 
     deltaTime: f32,
 
-    fn init(self: *Game) void {
+    fn init(self: *Game, fullscreen: bool) void {
         self.rnd = rand.DefaultPrng.init(@as(u64, @bitCast(std.time.milliTimestamp())));
 
         self.bottomBound = 150;
         self.topBound = -150;
 
-        const gameWidth =
-            (@as(f32, @floatFromInt(rl.getScreenWidth()))
-             / @as(f32, @floatFromInt(rl.getScreenHeight())))
-            * (self.bottomBound + @abs(self.topBound));
+        var gameWidth: f32 = undefined;
+
+        if (fullscreen) {
+            gameWidth =
+                (@as(f32, @floatFromInt(rl.getScreenWidth())) / @as(f32, @floatFromInt(rl.getScreenHeight())))
+                * (self.bottomBound + @abs(self.topBound));
+        } else {
+            gameWidth =
+                (@as(f32, @floatFromInt(windowWidth)) / @as(f32, @floatFromInt(windowHeight)))
+                * (self.bottomBound + @abs(self.topBound));
+        }
 
         self.leftBound = -gameWidth / 2;
         self.rightBound = gameWidth / 2;
@@ -53,43 +68,49 @@ const Game = struct {
 
 var game: Game = undefined;
 
-const Ship = struct {
-    const Bullet = struct {
-        const bulletSpeed = 4.0;
+const Rocket = struct {
+    const rocketSpeed = 4.0;
 
-        pos: Vector2,
-        angle: f32,
+    pos: Vector2,
+    angle: f32,
 
-        fn new() Bullet {
-            const bullet: Bullet = .{ .pos = ship.pos, .angle = ship.rot, };
-            return bullet;
+    fn new() Rocket {
+        const rocket: Rocket = .{ .pos = ship.pos, .angle = ship.rot, };
+        return rocket;
+    }
+
+    /// If returned false, the rocket is to be destroyed
+    fn update(self: *Rocket) !bool {
+        self.pos.x += rocketSpeed * @sin(-self.angle) * game.deltaTimeNormalized();
+        self.pos.y += rocketSpeed * @cos(self.angle) * game.deltaTimeNormalized();
+
+        if (!isPosInMap(self.pos)) {
+            return false;
         }
 
-        fn update(self: *Bullet) bool {
-            self.pos.x += bulletSpeed * @sin(-self.angle) * game.deltaTimeNormalized();
-            self.pos.y += bulletSpeed * @cos(self.angle) * game.deltaTimeNormalized();
-
-            // TODO: check if hit an asteroid
-            if (!isPosInMap(self.pos)) {
-                return false;
-            }
-
-            for (asteroids, 0..) |_, i| {
-                if (rlm.vector2Distance(asteroids[i].pos, self.pos) <= Asteroid.radius(asteroids[i].size)) {
-                    asteroids[i] = Asteroid.new();
+        for (asteroids.items) |*astr| {
+            if (rlm.vector2Distance(astr.pos, self.pos) <= Asteroid.radius(astr.size)) {
+                if (astr.size == .small) {
+                    astr.* = Asteroid.new();
                     return false;
                 }
+
+                const newSize: Asteroid.Size = if (astr.size == .large) .medium else .small;
+                const astrPos = astr.pos;
+                const astrVel = astr.velocity;
+
+                astr.* = Asteroid.newFromDestroyed(astrPos, astrVel, newSize);
+                try asteroids.append(Asteroid.newFromDestroyed(astrPos, astrVel, newSize));
+
+                return false;
             }
-
-            return true;
         }
-    };
 
-    const Line = struct {
-        pointA: Vector2,
-        pointB: Vector2
-    };
+        return true;
+    }
+};
 
+const Ship = struct {
     const defaultShipLines: [7]Line = .{
         .{ .pointA = .{ .x =  0.0, .y =  5.0 }, .pointB = .{ .x = -5.0, .y = -5.0 } },
         .{ .pointA = .{ .x =  0.0, .y =  5.0 }, .pointB = .{ .x =  5.0, .y = -5.0 } },
@@ -102,9 +123,9 @@ const Ship = struct {
 
     const maxVelocity = 5;
     const engineWorkingAcc = 0.1;
-    const engineIdleDrag = 0.02;
+    const engineIdleDrag = 0.014;
     const rotationSpeed = 4.0;
-    const maxBullets = 10;
+    const maxRockets = 5;
 
     shipLines: [7]Line,
     pos: Vector2,
@@ -114,50 +135,46 @@ const Ship = struct {
     angleWhenEngineLastUsed: f32,
     engineWorking: bool,
     collided: bool,
-    bullets: std.ArrayList(Bullet),
+    rockets: std.ArrayList(Rocket),
 
-    const ShipLinesRandVelocities = struct {
-        var velocities: [7]Vector2 = undefined;
+    const shipLinesRandVelocities = struct {
+        var vels: [7]Vector2 = undefined;
 
         fn setRandVelocities() void {
-            for (&velocities) |*value| {
+            for (&vels) |*value| {
                 value.x = (game.rnd.random().float(f32) - 0.5);
                 value.y = (game.rnd.random().float(f32) - 0.5);
             }
         }
     };
+    
+    const lineVels = shipLinesRandVelocities;
 
     fn init(self: *Ship) !void {
-        self.pos.x = 0;
-        self.pos.y = 0;
-        self.vel.x = 0;
-        self.vel.y = 0;
-        self.acc.x = 0;
-        self.acc.y = 0;
+        self.pos = .{ .x = 0, .y = 0 };
+        self.vel = .{ .x = 0, .y = 0 };
+        self.acc = .{ .x = 0, .y = 0 };
         self.rot = 0;
         self.angleWhenEngineLastUsed = 0;
         self.engineWorking = false;
         self.collided = false;
-        self.bullets = try std.ArrayList(Bullet).initCapacity(std.heap.page_allocator, maxBullets);
+        self.rockets = try std.ArrayList(Rocket).initCapacity(std.heap.page_allocator, maxRockets);
         std.mem.copyForwards(Line, &self.shipLines, &defaultShipLines);
     }
 
     fn deinit(self: *Ship) void {
-        self.bullets.deinit();
+        self.rockets.deinit();
     }
 
     fn relive(self: *Ship) void {
-        self.pos.x = 0;
-        self.pos.y = 0;
-        self.vel.x = 0;
-        self.vel.y = 0;
-        self.acc.x = 0;
-        self.acc.y = 0;
+        self.pos = .{ .x = 0, .y = 0 };
+        self.vel = .{ .x = 0, .y = 0 };
+        self.acc = .{ .x = 0, .y = 0 };
         self.rot = 0;
         self.angleWhenEngineLastUsed = 0;
         self.engineWorking = false;
         self.collided = false;
-        self.bullets.clearRetainingCapacity();
+        self.rockets.clearRetainingCapacity();
         std.mem.copyForwards(Line, &self.shipLines, &defaultShipLines);
     }
 
@@ -170,7 +187,7 @@ const Ship = struct {
         self.acc = .{ .x = 0, .y = 0 };
         // self.vel = .{ .x = 0, .y = 0 };
         self.engineWorking = false;
-        ShipLinesRandVelocities.setRandVelocities();
+        lineVels.setRandVelocities();
     }
 
     fn rotateLeftwards(self: *Ship) void {
@@ -181,20 +198,14 @@ const Ship = struct {
         self.rot += math.degreesToRadians(rotationSpeed) * game.deltaTimeNormalized();
     }
 
-    fn update(self: *Ship) void {
+    fn update(self: *Ship) !void {
         if (self.collided) {
             for (&self.shipLines, 0..) |*line, i| {
-                line.pointA = rlm.vector2Add(
-                    line.pointA,
-                    rlm.vector2Scale(ShipLinesRandVelocities.velocities[i], game.deltaTimeNormalized())
-                ); 
-                line.pointB = rlm.vector2Add(
-                    line.pointB,
-                    rlm.vector2Scale(ShipLinesRandVelocities.velocities[i], game.deltaTimeNormalized())
-                ); 
+                line.pointA = line.pointA.add(lineVels.vels[i].scale(game.deltaTimeNormalized()));
+                line.pointB = line.pointB.add(lineVels.vels[i].scale(game.deltaTimeNormalized()));
             }
         } else if (self.engineWorking) {
-            ship.acc.x = -@sin(ship.rot) * engineWorkingAcc;
+            ship.acc.x = @sin(-ship.rot) * engineWorkingAcc;
             ship.acc.y = @cos(ship.rot) * engineWorkingAcc;
         } else {
             if (ship.vel.x > engineIdleDrag or ship.vel.x < -engineIdleDrag) {
@@ -233,9 +244,9 @@ const Ship = struct {
 
         var i: usize = 0;
 
-        while (i < self.bullets.items.len) {
-            if (!self.bullets.items[i].update()) {
-                _ = self.bullets.swapRemove(i);
+        while (i < self.rockets.items.len) {
+            if (!try self.rockets.items[i].update()) {
+                _ = self.rockets.swapRemove(i);
                 continue;
             }
 
@@ -278,16 +289,16 @@ const Ship = struct {
 
         const timeBetweenShots = 0.1;
 
-        if (self.bullets.items.len == maxBullets or static.timeSinceLastShot() < timeBetweenShots) {
+        if (self.rockets.items.len == maxRockets or static.timeSinceLastShot() < timeBetweenShots) {
             return;
         }
 
-        try self.bullets.append(Bullet.new());
+        try self.rockets.append(Rocket.new());
         static.setTime();
     }
 
     fn draw(self: *Ship) void {
-        const FrameCount = struct {
+        const frameCount = struct {
             var frameCount: i32 = 0;
             var drawFire: bool = true;
 
@@ -301,45 +312,43 @@ const Ship = struct {
             }
         };
 
-        FrameCount.update();
+        frameCount.update();
 
         var shipLines: [7]Line = undefined;
         std.mem.copyForwards(Line, &shipLines, self.shipLines[0..]);
 
         for (&shipLines) |*line| {
-            line.pointA = rlm.vector2Add(ship.pos, rlm.vector2Rotate(line.pointA, ship.rot));
-            line.pointB = rlm.vector2Add(ship.pos, rlm.vector2Rotate(line.pointB, ship.rot));
-            line.pointA = convertFromGameToWindowCoords(line.pointA);
-            line.pointB = convertFromGameToWindowCoords(line.pointB);
+            line.pointA = ship.pos.add(rlm.vector2Rotate(line.pointA, ship.rot));
+            line.pointB = ship.pos.add(rlm.vector2Rotate(line.pointB, ship.rot));
+            line.pointA = gameToWin(line.pointA);
+            line.pointB = gameToWin(line.pointB);
         }
-
-        const thickness = 1.0;
 
         for (shipLines[0..5]) |line| {
-            rl.drawLineEx(line.pointA, line.pointB, thickness, rl.Color.white);
+            drawLine(line);
         }
 
-        if (ship.engineWorking and FrameCount.drawFire) {
-            rl.drawLineEx(shipLines[5].pointA, shipLines[5].pointB, thickness, rl.Color.white);
-            rl.drawLineEx(shipLines[6].pointA, shipLines[6].pointB, thickness, rl.Color.white);
+        if (ship.engineWorking and frameCount.drawFire) {
+            drawLine(shipLines[5]);
+            drawLine(shipLines[6]);
         }
 
-        const bulletLenght = 3.0;
+        const rocketLenght = 3.0;
 
-        for (self.bullets.items) |bullet| {
+        for (self.rockets.items) |rocket| {
             var line: Line = .{ 
-                .pointA = .{ .x = 0, .y =  bulletLenght / 2.0 },
-                .pointB = .{ .x = 0, .y = -bulletLenght / 2.0 },
+                .pointA = .{ .x = 0, .y =  rocketLenght / 2.0 },
+                .pointB = .{ .x = 0, .y = -rocketLenght / 2.0 },
             };
 
-            line.pointA = rlm.vector2Rotate(line.pointA, bullet.angle);
-            line.pointB = rlm.vector2Rotate(line.pointB, bullet.angle);
-            line.pointA = rlm.vector2Add(line.pointA, bullet.pos);
-            line.pointB = rlm.vector2Add(line.pointB, bullet.pos);
-            line.pointA = convertFromGameToWindowCoords(line.pointA);
-            line.pointB = convertFromGameToWindowCoords(line.pointB);
+            line.pointA = line.pointA.rotate(rocket.angle);
+            line.pointB = line.pointB.rotate(rocket.angle);
+            line.pointA = line.pointA.add(rocket.pos);
+            line.pointB = line.pointB.add(rocket.pos);
+            line.pointA = gameToWin(line.pointA);
+            line.pointB = gameToWin(line.pointB);
 
-            rl.drawLineEx(line.pointA, line.pointB, thickness, rl.Color.white);
+            drawLine(line);
         }
     }
 };
@@ -379,7 +388,6 @@ const Asteroid = struct {
         };
     }
 
-    // Needed to multiply random values in new() function since the random values are too small
     fn randomMultiplier(size: Size) f32 {
         return switch (size) {
             .small => 1.8,
@@ -488,14 +496,18 @@ const Asteroid = struct {
         return astr;
     }
 
-    fn newWithPos(pos: Vector2) Asteroid {
+    fn newFromDestroyed(pos: Vector2, parentAstrVel: Vector2, size: Size) Asteroid {
         var astr: Asteroid = .{
             .points = undefined,
             .pos = pos,
             .velocity = undefined,
-            .size = undefined,
-            .spawnSide = undefined
+            .size = size,
+            .spawnSide = .check_for_all
         };
+
+        astr.velocity = parentAstrVel;
+        astr.velocity.x += game.rnd.random().float(f32) / 5;
+        astr.velocity.y += (1.0 / 5.0) - astr.velocity.x;
 
         for (astr.points, 0..) |_, i| {
             const multiplyXby1orMinus1: f32 =
@@ -515,47 +527,23 @@ const Asteroid = struct {
                 * randomMultiplier(astr.size);
         }
 
-        const rand_int = @mod(game.rnd.random().int(i32), 100);
-
-        if (rand_int >= 90) {
-            astr.size = .large;
-        } else if (rand_int >= 20) {
-            astr.size = .medium;
-        } else {
-            astr.size = .small;
-        }
-
-        astr.velocity.x = game.rnd.random().float(f32);
-        astr.velocity.y = 1 - astr.velocity.x;
-        astr.velocity.x *= speedMultiplier(astr.size);
-        astr.velocity.y *= speedMultiplier(astr.size);
-
-        astr.spawnSide = .check_for_all;
-
         return astr;
     }
 
     fn checkIfOutOfBounds(self: *Asteroid, top: bool, bottom: bool, left: bool, right: bool) bool {
-        if (top and self.pos.y < game.topBound) {
-            return true;
-        }
-
-        if (bottom and self.pos.y > game.bottomBound) {
-            return true;
-        }
-
-        if (left and self.pos.x < game.leftBound) {
-            return true;
-        }
-
-        if (right and self.pos.x > game.rightBound) {
+        if ((top and self.pos.y < game.topBound) or
+            (bottom and self.pos.y > game.bottomBound) or
+            (left and self.pos.x < game.leftBound) or
+            (right and self.pos.x > game.rightBound))
+        {
             return true;
         }
 
         return false;
     }
 
-    fn update(self: *Asteroid) void {
+    /// Returns true if swapRemove was used on 'asteroids'
+    fn update(self: *Asteroid, index: usize) bool {
         self.pos.x += self.velocity.x * game.deltaTimeNormalized();
         self.pos.y += self.velocity.y * game.deltaTimeNormalized();
 
@@ -569,28 +557,43 @@ const Asteroid = struct {
             (self.spawnSide == .right and self.checkIfOutOfBounds(true, true, true, false)) or
             (self.spawnSide == .check_for_all and self.checkIfOutOfBounds(true, true, true, true)))
         {
-            self.* = new();
+            if (asteroids.items.len > minAsteroids) {
+                _ = asteroids.swapRemove(index);
+                return true;
+            } else {
+                self.* = new();
+            }
         }
+
+        return false;
     }
 };
 
-const numAsteroids = 30;
-var asteroids: [numAsteroids]Asteroid = undefined;
+const minAsteroids = 25;
+var asteroids: std.ArrayList(Asteroid) = undefined;
 
-fn init() !void {
-    game.init();
+fn init(fullscreen: bool) !void {
+    game.init(fullscreen);
     try ship.init();
 
-    for (asteroids[0..]) |*astr| {
-        astr.* = Asteroid.new();
+    asteroids = try std.ArrayList(Asteroid).initCapacity(std.heap.page_allocator, 60);
+
+    for (0..minAsteroids) |_| {
+        try asteroids.append(Asteroid.new());
     }
 }
 
-fn update() void {
-    ship.update();
+fn update() !void {
+    try ship.update();
 
-    for (asteroids[0..]) |*astr| {
-        astr.update();
+    var i: usize = 0;
+
+    while (i < asteroids.items.len) {
+        if (asteroids.items[i].update(i)) {
+            continue;
+        }
+
+        i += 1;
     }
 }
 
@@ -624,22 +627,16 @@ fn input() !void {
 }
 
 fn drawAsteroids() void {
-    for (asteroids) |astr| {
+    for (asteroids.items) |astr| {
         for (0..astr.points.len - 1) |i| {
-            rl.drawLineEx(
-                convertFromGameToWindowCoords(rlm.vector2Add(astr.points[i], astr.pos)),
-                convertFromGameToWindowCoords(rlm.vector2Add(astr.points[i+1], astr.pos)),
-                1.0,
-                rl.Color.white
-            );
+            const pointA = gameToWin(astr.pos.add(astr.points[i]));
+            const pointB = gameToWin(astr.pos.add(astr.points[i + 1]));
+            drawLineVec2(pointA, pointB);
         }
 
-        rl.drawLineEx(
-            convertFromGameToWindowCoords(rlm.vector2Add(astr.points[0], astr.pos)),
-            convertFromGameToWindowCoords(rlm.vector2Add(astr.points[astr.points.len - 1], astr.pos)),
-            1.0,
-            rl.Color.white
-        );
+        const pointA = gameToWin(astr.pos.add(astr.points[0]));
+        const pointB = gameToWin(astr.pos.add(astr.points[astr.points.len - 1]));
+        drawLineVec2(pointA, pointB);
     }
 }
 
@@ -649,6 +646,8 @@ fn convertFromGameToWindowCoords(vec: Vector2) Vector2 {
     result.y = (vec.y + game.bottomBound) * game.winHeightOverGameHeight;
     return result;
 }
+
+const gameToWin = convertFromGameToWindowCoords;
 
 fn isPosInMap(pos: Vector2) bool {
     if (pos.x < game.leftBound or pos.x > game.rightBound or
@@ -660,15 +659,23 @@ fn isPosInMap(pos: Vector2) bool {
     return true;
 }
 
+fn drawLineVec2(pointA: Vector2, pointB: Vector2) void {
+    rl.drawLineEx(pointA, pointB, 1, rl.Color.white);
+}
+
+fn drawLine(line: Line) void {
+    rl.drawLineEx(line.pointA, line.pointB, 1, rl.Color.white);
+}
+
 pub fn main() !void {
     rl.setConfigFlags(.{ .vsync_hint = true });
 
-    const width = 1280;
-    const height = 960;
-    rl.initWindow(width, height, "Asteroids");
+    const fullscreen = false;
+    rl.initWindow(Game.windowWidth, Game.windowHeight, "Asteroids");
     defer rl.closeWindow();
-    rl.setWindowSize(width, height);
+    rl.setWindowSize(Game.windowWidth, Game.windowHeight);
 
+    // const fullscreen = true;
     // rl.initWindow(rl.getScreenWidth(), rl.getScreenHeight(), "Asteroids");
     // defer rl.closeWindow();
     // rl.toggleFullscreen();
@@ -677,14 +684,14 @@ pub fn main() !void {
     rl.setTargetFPS(60);
 
     Asteroid.initStruct();
-    try init();
+    try init(fullscreen);
 
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
         game.deltaTime = rl.getFrameTime();
         // Update
         //---------------------------------------------------------------------
         try input();
-        update();
+        try update();
 
         // Draw
         //---------------------------------------------------------------------
@@ -697,4 +704,5 @@ pub fn main() !void {
     }
 
     ship.deinit();
+    asteroids.deinit();
 }
