@@ -1,6 +1,5 @@
 {
     "$schema": "https://raw.githubusercontent.com/zigtools/zls/master/schema.json",
-    "global_cache_path": "C:/Users/matij/AppData/Local/zig",
     "enable_snippets": true,
     "enable_ast_check_diagnostics": true,
     "enable_autofix": true,
@@ -12,5 +11,6 @@
     "inlay_hints_hide_redundant_param_names_last_token": true,
     "operator_completions": true,
     "include_at_in_builtins": true,
-    "max_detail_length": 1048576
+    "max_detail_length": 1048576,
+	"max_line_length": 100
 }

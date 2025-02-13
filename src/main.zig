@@ -37,13 +37,13 @@ const Game = struct {
         var gameWidth: f32 = undefined;
 
         if (fullscreen) {
-            gameWidth =
-                (@as(f32, @floatFromInt(rl.getScreenWidth())) / @as(f32, @floatFromInt(rl.getScreenHeight())))
-                * (self.bottomBound + @abs(self.topBound));
+            const winWidthAsFl = @as(f32, @floatFromInt(rl.getScreenWidth()));
+            const winHeightAsFl = @as(f32, @floatFromInt(rl.getScreenHeight()));
+            gameWidth = (winWidthAsFl / winHeightAsFl) * (self.bottomBound + @abs(self.topBound));
         } else {
-            gameWidth =
-                (@as(f32, @floatFromInt(windowWidth)) / @as(f32, @floatFromInt(windowHeight)))
-                * (self.bottomBound + @abs(self.topBound));
+            const winWidthAsFl = @as(f32, @floatFromInt(windowWidth));
+            const winHeightAsFl = @as(f32, @floatFromInt(windowHeight));
+            gameWidth = (winWidthAsFl / winHeightAsFl) * (self.bottomBound + @abs(self.topBound));
         }
 
         self.leftBound = -gameWidth / 2;
@@ -599,29 +599,29 @@ fn update() !void {
 
 fn input() !void {
     if (ship.collided) {
-        if (rl.isKeyDown(.key_enter)) {
+        if (rl.isKeyDown(.enter)) {
             ship.relive();
         }
 
         return;
     }
 
-    if (rl.isKeyDown(.key_left)) {
+    if (rl.isKeyDown(.left)) {
         ship.rotateLeftwards();
-    } else if (rl.isKeyDown(.key_right)) {
+    } else if (rl.isKeyDown(.right)) {
         ship.rotateRightwards();
     }
 
-    if (rl.isKeyDown(.key_up)) {
+    if (rl.isKeyDown(.up)) {
         ship.engineWorking = true;
-    } else if (rl.isKeyReleased(.key_up)) {
+    } else if (rl.isKeyReleased(.up)) {
         ship.angleWhenEngineLastUsed = math.atan2(ship.vel.y, ship.vel.x);
         ship.engineWorking = false;
     } else {
         ship.engineWorking = false;
     }
 
-    if (rl.isKeyDown(.key_space)) {
+    if (rl.isKeyDown(.space)) {
         try ship.shoot();
     }
 }
