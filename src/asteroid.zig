@@ -80,10 +80,10 @@ pub const Asteroid = struct {
         }
     }
 
-    pub fn new(game: *const Game, rnd: *rand.DefaultPrng) Asteroid {
+    pub fn new(game: *const Game, prng: *rand.DefaultPrng) Asteroid {
         var astr: Asteroid = .{ .points = undefined, .pos = undefined, .velocity = undefined, .size = undefined, .spawn_side = undefined };
 
-        const rand_int = @mod(rnd.random().int(i32), 100);
+        const rand_int = @mod(prng.random().int(i32), 100);
 
         if (rand_int >= 90) {
             astr.size = .large;
@@ -93,31 +93,31 @@ pub const Asteroid = struct {
             astr.size = .small;
         }
 
-        astr.spawn_side = @enumFromInt(@mod(rnd.random().int(i32), 4));
+        astr.spawn_side = @enumFromInt(@mod(prng.random().int(i32), 4));
 
         if (astr.spawn_side == .top) {
-            astr.pos.x = (rnd.random().float(f32) - 0.5) *
+            astr.pos.x = (prng.random().float(f32) - 0.5) *
                 (game.bounds.right_bound + @abs(game.bounds.left_bound));
             astr.pos.y = game.bounds.top_bound - radius(astr.size);
-            astr.velocity.x = (rnd.random().float(f32) - 0.5) * 2;
+            astr.velocity.x = (prng.random().float(f32) - 0.5) * 2;
             astr.velocity.y = (1 - astr.velocity.x);
         } else if (astr.spawn_side == .bottom) {
-            astr.pos.x = (rnd.random().float(f32) - 0.5) *
+            astr.pos.x = (prng.random().float(f32) - 0.5) *
                 (game.bounds.right_bound + @abs(game.bounds.left_bound));
             astr.pos.y = game.bounds.bottom_bound + radius(astr.size);
-            astr.velocity.x = (rnd.random().float(f32) - 0.5) * 2;
+            astr.velocity.x = (prng.random().float(f32) - 0.5) * 2;
             astr.velocity.y = (1 - astr.velocity.x) * (-1);
         } else if (astr.spawn_side == .left) {
             astr.pos.x = game.bounds.left_bound - radius(astr.size);
-            astr.pos.y = (rnd.random().float(f32) - 0.5) *
+            astr.pos.y = (prng.random().float(f32) - 0.5) *
                 (game.bounds.bottom_bound + @abs(game.bounds.top_bound));
-            astr.velocity.x = rnd.random().float(f32);
+            astr.velocity.x = prng.random().float(f32);
             astr.velocity.y = (1 - astr.velocity.x);
         } else if (astr.spawn_side == .right) {
             astr.pos.x = game.bounds.right_bound + radius(astr.size);
-            astr.pos.y = (rnd.random().float(f32) - 0.5) *
+            astr.pos.y = (prng.random().float(f32) - 0.5) *
                 (game.bounds.bottom_bound + @abs(game.bounds.top_bound));
-            astr.velocity.x = rnd.random().float(f32) * (-1);
+            astr.velocity.x = prng.random().float(f32) * (-1);
             astr.velocity.y = (1 - astr.velocity.x) * (-1);
         }
 
@@ -128,19 +128,19 @@ pub const Asteroid = struct {
             // The random number is always positive, and I don't want
             // coordinates to only increase since it would be weird when
             // checking for collision as center wouldn't really be in center
-            const multiplyXby1orMinus1: f32 =
-                if (rnd.random().boolean()) -1 else 1;
+            const multiply_x_by_1_or_minus_1: f32 =
+                if (prng.random().boolean()) -1 else 1;
 
-            const multiplyYby1orMinus1: f32 =
-                if (rnd.random().boolean()) -1 else 1;
+            const multiply_y_by_1_or_minus_1: f32 =
+                if (prng.random().boolean()) -1 else 1;
 
             astr.points[i].x =
-                Asteroid.pointsOnCircle(astr.size)[i].x + multiplyXby1orMinus1 *
-                rnd.random().float(f32) * randomMultiplier(astr.size);
+                Asteroid.pointsOnCircle(astr.size)[i].x + multiply_x_by_1_or_minus_1 *
+                prng.random().float(f32) * randomMultiplier(astr.size);
 
             astr.points[i].y =
-                Asteroid.pointsOnCircle(astr.size)[i].y + multiplyYby1orMinus1 *
-                rnd.random().float(f32) * randomMultiplier(astr.size);
+                Asteroid.pointsOnCircle(astr.size)[i].y + multiply_y_by_1_or_minus_1 *
+                prng.random().float(f32) * randomMultiplier(astr.size);
         }
 
         return astr;

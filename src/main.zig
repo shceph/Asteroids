@@ -38,21 +38,23 @@ fn update(
     ship: *Ship,
     asteroids: *std.ArrayList(Asteroid),
     rockets: *std.ArrayList(Rocket),
-    rnd: *rand.DefaultPrng,
+    alien: *Alien,
+    prng: *rand.DefaultPrng,
 ) !void {
     try ship.update(game);
-    try updateRockets(rockets, game, asteroids, rnd);
+    try updateRockets(rockets, game, asteroids, prng);
+    alien.update(game, prng);
 
     var i: usize = 0;
 
     while (i < asteroids.items.len) {
-        if (asteroids.items[i].update(game, ship, rnd)) {
+        if (asteroids.items[i].update(game, ship, prng)) {
             if (asteroids.items.len > Asteroid.min_asteroids) {
                 _ = asteroids.swapRemove(i);
                 continue;
             }
 
-            asteroids.items[i] = Asteroid.new(game, rnd);
+            asteroids.items[i] = Asteroid.new(game, prng);
         }
 
         i += 1;
@@ -150,21 +152,24 @@ fn drawAsteroids(asteroids: *const std.ArrayList(Asteroid)) void {
     }
 }
 
-fn drawAlien() void {
+fn drawAlien(alien: Alien) void {
     for (Alien.alien_default_lines) |line| {
-        draw.drawLine(line);
+        draw.drawLineVec2(
+            rlm.vector2Add(line.point_a, alien.pos),
+            rlm.vector2Add(line.point_b, alien.pos),
+        );
     }
 }
 
 pub fn main() !void {
     rl.setConfigFlags(.{ .vsync_hint = true });
 
-    // rl.initWindow(Game.window_width, Game.window_height, "Asteroids");
-    // defer rl.closeWindow();
-
-    rl.initWindow(rl.getScreenWidth(), rl.getScreenHeight(), "Asteroids");
+    rl.initWindow(Game.window_width, Game.window_height, "Asteroids");
     defer rl.closeWindow();
-    rl.toggleFullscreen();
+
+    // rl.initWindow(rl.getScreenWidth(), rl.getScreenHeight(), "Asteroids");
+    // defer rl.closeWindow();
+    // rl.toggleFullscreen();
 
     rl.setTargetFPS(60);
 
@@ -173,10 +178,11 @@ pub fn main() !void {
     const max_asteroids = 60;
     const min_asteroids = 25;
 
-    var rnd = rand.DefaultPrng.init(@as(u64, @bitCast(std.time.milliTimestamp())));
+    var prng = rand.DefaultPrng.init(@as(u64, @bitCast(std.time.milliTimestamp())));
 
     var game = Game.new();
     var ship = Ship.new();
+    var alien = Alien.new(game.bounds, &prng);
     var asteroids = try std.ArrayList(Asteroid).initCapacity(
         std.heap.page_allocator,
         max_asteroids,
@@ -187,7 +193,7 @@ pub fn main() !void {
     );
 
     for (0..min_asteroids) |_| {
-        try asteroids.append(Asteroid.new(&game, &rnd));
+        try asteroids.append(Asteroid.new(&game, &prng));
     }
 
     // Detect window close button or ESC key
@@ -195,7 +201,7 @@ pub fn main() !void {
         game.delta_time = rl.getFrameTime();
 
         try input(&ship, &rockets);
-        try update(&game, &ship, &asteroids, &rockets, &rnd);
+        try update(&game, &ship, &asteroids, &rockets, &alien, &prng);
 
         rl.beginDrawing();
         defer rl.endDrawing();
@@ -204,7 +210,7 @@ pub fn main() !void {
         ship.draw();
         drawRockets(&rockets);
         drawAsteroids(&asteroids);
-        drawAlien();
+        drawAlien(alien);
     }
 
     asteroids.deinit();
