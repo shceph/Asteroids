@@ -8,9 +8,9 @@ const Game = @import("game.zig").Game;
 const Asteroid = @import("asteroid.zig").Asteroid;
 const Ship = @import("ship.zig").Ship;
 
-fn isPosInMap(pos: Vector2, game: *const Game) bool {
-    if (pos.x < game.bounds.left_bound or pos.x > game.bounds.right_bound or
-        pos.y < game.bounds.top_bound or pos.y > game.bounds.bottom_bound)
+fn isPosInMap(pos: Vector2, bounds: Game.Bounds) bool {
+    if (pos.x < bounds.left_bound or pos.x > bounds.right_bound or
+        pos.y < bounds.top_bound or pos.y > bounds.bottom_bound)
     {
         return false;
     }
@@ -45,10 +45,10 @@ pub const Projectile = struct {
         asteroids: *std.ArrayList(Asteroid),
         prng: *rand.DefaultPrng,
     ) !bool {
-        self.pos.x += projectile_speed * @cos(self.angle) * game.deltaTimeNormalized();
-        self.pos.y += projectile_speed * @sin(self.angle) * game.deltaTimeNormalized();
+        self.pos.x += projectile_speed * @cos(self.angle) * Game.deltaTimeNormalized();
+        self.pos.y += projectile_speed * @sin(self.angle) * Game.deltaTimeNormalized();
 
-        if (!isPosInMap(self.pos, game)) {
+        if (!isPosInMap(self.pos, game.bounds)) {
             return false;
         }
 
@@ -59,7 +59,7 @@ pub const Projectile = struct {
         for (asteroids.items) |*astr| {
             if (rlm.vector2Distance(astr.pos, self.pos) <= Asteroid.radius(astr.size)) {
                 if (astr.size == .small) {
-                    astr.* = Asteroid.new(game, prng);
+                    astr.* = Asteroid.new(game.bounds, prng);
                     return false;
                 }
 

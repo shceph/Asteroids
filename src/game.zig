@@ -17,7 +17,6 @@ pub const Game = struct {
     };
 
     bounds: Bounds,
-    delta_time: f32,
 
     pub fn new() Game {
         var game: Game = undefined;
@@ -47,12 +46,11 @@ pub const Game = struct {
             win_height_over_game_height,
         );
 
-        game.delta_time = 0;
         return game;
     }
 
     /// Normalizes delta time so when the fps is 60, the return value is 1
-    pub fn deltaTimeNormalized(self: Game) f32 {
-        return self.delta_time * 60;
+    pub fn deltaTimeNormalized() f32 {
+        return rl.getFrameTime() * 60;
     }
 };

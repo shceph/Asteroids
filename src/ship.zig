@@ -13,15 +13,6 @@ const Projectile = @import("projectile.zig").Projectile;
 const Game = @import("game.zig").Game;
 const Asteroid = @import("asteroid.zig").Asteroid;
 
-fn convertFromGameToWindowCoords(vec: Vector2, game: *const Game) Vector2 {
-    var result: Vector2 = undefined;
-    result.x = (vec.x + game.bounds.right_bound) * game.win_width_over_game_width;
-    result.y = (vec.y + game.bounds.bottom_bound) * game.win_height_over_game_height;
-    return result;
-}
-
-const gameToWin = convertFromGameToWindowCoords;
-
 pub const Ship = struct {
     const default_ship_lines: [7]Line = .{
         .{ .point_a = .{ .y = 0.00, .x = 5.00 }, .point_b = .{ .y = -5.0, .x = -5.0 } },
@@ -104,25 +95,25 @@ pub const Ship = struct {
         self.rotate_rightwards = true;
     }
 
-    pub fn update(self: *Ship, game: *const Game) !void {
+    pub fn update(self: *Ship, bounds: Game.Bounds) !void {
         if (self.rotate_leftwards) {
             self.rot -=
-                rotation_speed * game.deltaTimeNormalized();
+                rotation_speed * Game.deltaTimeNormalized();
             self.rotate_leftwards = false;
         }
 
         if (self.rotate_rightwards) {
             self.rot +=
-                rotation_speed * game.deltaTimeNormalized();
+                rotation_speed * Game.deltaTimeNormalized();
             self.rotate_rightwards = false;
         }
 
         if (self.collided) {
             for (&self.ship_lines, 0..) |*line, i| {
                 line.point_a =
-                    line.point_a.add(lineVels.vels[i].scale(game.deltaTimeNormalized()));
+                    line.point_a.add(lineVels.vels[i].scale(Game.deltaTimeNormalized()));
                 line.point_b =
-                    line.point_b.add(lineVels.vels[i].scale(game.deltaTimeNormalized()));
+                    line.point_b.add(lineVels.vels[i].scale(Game.deltaTimeNormalized()));
             }
         } else if (self.engine_working) {
             self.acc.x = @cos(self.rot) * engine_working_acc;
@@ -149,36 +140,36 @@ pub const Ship = struct {
             @abs(self.vel.y + self.acc.y * 0.5) > @abs(self.vel.y)));
 
         if (apply_acceleration_condition) {
-            self.vel.x += self.acc.x * 0.5 * game.deltaTimeNormalized();
-            self.vel.y += self.acc.y * 0.5 * game.deltaTimeNormalized();
+            self.vel.x += self.acc.x * 0.5 * Game.deltaTimeNormalized();
+            self.vel.y += self.acc.y * 0.5 * Game.deltaTimeNormalized();
         }
 
-        self.pos.x += self.vel.x * game.deltaTimeNormalized();
-        self.pos.y += self.vel.y * game.deltaTimeNormalized();
+        self.pos.x += self.vel.x * Game.deltaTimeNormalized();
+        self.pos.y += self.vel.y * Game.deltaTimeNormalized();
 
         if (apply_acceleration_condition) {
-            self.vel.x += self.acc.x * 0.5 * game.deltaTimeNormalized();
-            self.vel.y += self.acc.y * 0.5 * game.deltaTimeNormalized();
+            self.vel.x += self.acc.x * 0.5 * Game.deltaTimeNormalized();
+            self.vel.y += self.acc.y * 0.5 * Game.deltaTimeNormalized();
         }
 
         if (self.collided) {
             return;
         }
 
-        if (self.pos.x < game.bounds.left_bound) {
-            self.pos.x = game.bounds.right_bound;
+        if (self.pos.x < bounds.left_bound) {
+            self.pos.x = bounds.right_bound;
         }
 
-        if (self.pos.x > game.bounds.right_bound) {
-            self.pos.x = game.bounds.left_bound;
+        if (self.pos.x > bounds.right_bound) {
+            self.pos.x = bounds.left_bound;
         }
 
-        if (self.pos.y < game.bounds.top_bound) {
-            self.pos.y = game.bounds.bottom_bound;
+        if (self.pos.y < bounds.top_bound) {
+            self.pos.y = bounds.bottom_bound;
         }
 
-        if (self.pos.y > game.bounds.bottom_bound) {
-            self.pos.y = game.bounds.top_bound;
+        if (self.pos.y > bounds.bottom_bound) {
+            self.pos.y = bounds.top_bound;
         }
     }
 

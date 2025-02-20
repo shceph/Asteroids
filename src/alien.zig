@@ -83,17 +83,17 @@ pub const Alien = struct {
         return alien;
     }
 
-    pub fn update(self: *Alien, game: *const Game, prng: *rand.DefaultPrng) void {
+    pub fn update(self: *Alien, bounds: Bounds, prng: *rand.DefaultPrng) void {
         const static = struct {
             var frame_count: i32 = 0;
 
             fn update(
                 alien: *Alien,
-                bounds: Bounds,
+                bounds_inner: Bounds,
                 prng_inner: *rand.DefaultPrng,
             ) void {
                 if (frame_count >= 120) {
-                    alien.setRandomVel(bounds, prng_inner);
+                    alien.setRandomVel(bounds_inner, prng_inner);
                     frame_count = 0;
                 }
 
@@ -101,9 +101,9 @@ pub const Alien = struct {
             }
         };
 
-        static.update(self, game.bounds, prng);
+        static.update(self, bounds, prng);
 
-        self.pos.x += self.vel.x * game.deltaTimeNormalized();
-        self.pos.y += self.vel.y * game.deltaTimeNormalized();
+        self.pos.x += self.vel.x * Game.deltaTimeNormalized();
+        self.pos.y += self.vel.y * Game.deltaTimeNormalized();
     }
 };

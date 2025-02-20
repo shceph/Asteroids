@@ -42,29 +42,44 @@ fn update(
     alien: *Alien,
     prng: *rand.DefaultPrng,
 ) !void {
-    try ship.update(game);
-    try updateProjectiles(projectiles, game, ship, asteroids, prng);
-    alien.update(game, prng);
-    const should_remain = try alien.projectile.update(game, ship, asteroids, prng);
+    const static = struct {
+        var time_up_to_last_shot: f64 = 0;
 
-    if (!should_remain) {
+        fn setTime() void {
+            time_up_to_last_shot = rl.getTime();
+        }
+
+        fn timeSinceLastShot() f64 {
+            return rl.getTime() - time_up_to_last_shot;
+        }
+    };
+
+    try ship.update(game.bounds);
+    try updateProjectiles(projectiles, game, ship, asteroids, prng);
+    alien.update(game.bounds, prng);
+    const should_remain = try alien.projectile.update(game, ship, asteroids, prng);
+    const time_between_shots = 4.0;
+
+    if (!should_remain and static.timeSinceLastShot() > time_between_shots) {
         const alien_to_ship_vec = rlm.vector2Subtract(ship.pos, alien.pos);
         alien.projectile = Projectile.new(
             alien.pos,
             math.atan2(alien_to_ship_vec.y, alien_to_ship_vec.x),
         );
+
+        static.setTime();
     }
 
     var i: usize = 0;
 
     while (i < asteroids.items.len) {
-        if (asteroids.items[i].update(game, ship, prng)) {
+        if (asteroids.items[i].update(game.bounds, ship, prng)) {
             if (asteroids.items.len > Asteroid.min_asteroids) {
                 _ = asteroids.swapRemove(i);
                 continue;
             }
 
-            asteroids.items[i] = Asteroid.new(game, prng);
+            asteroids.items[i] = Asteroid.new(game.bounds, prng);
         }
 
         i += 1;
@@ -218,13 +233,11 @@ pub fn main() !void {
     );
 
     for (0..min_asteroids) |_| {
-        try asteroids.append(Asteroid.new(&game, &prng));
+        try asteroids.append(Asteroid.new(game.bounds, &prng));
     }
 
     // Detect window close button or ESC key
     while (!rl.windowShouldClose()) {
-        game.delta_time = rl.getFrameTime();
-
         try input(&ship, &projectiles);
         try update(&game, &ship, &asteroids, &projectiles, &alien, &prng);
 

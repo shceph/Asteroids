@@ -86,7 +86,7 @@ pub const Asteroid = struct {
         }
     }
 
-    pub fn new(game: *const Game, prng: *rand.DefaultPrng) Asteroid {
+    pub fn new(bounds: Game.Bounds, prng: *rand.DefaultPrng) Asteroid {
         var astr: Asteroid = .{
             .points = undefined,
             .pos = undefined,
@@ -109,26 +109,26 @@ pub const Asteroid = struct {
 
         if (astr.spawn_side == .top) {
             astr.pos.x = (prng.random().float(f32) - 0.5) *
-                (game.bounds.right_bound + @abs(game.bounds.left_bound));
-            astr.pos.y = game.bounds.top_bound - radius(astr.size);
+                (bounds.right_bound + @abs(bounds.left_bound));
+            astr.pos.y = bounds.top_bound - radius(astr.size);
             astr.velocity.x = (prng.random().float(f32) - 0.5) * 2;
             astr.velocity.y = (1 - astr.velocity.x);
         } else if (astr.spawn_side == .bottom) {
             astr.pos.x = (prng.random().float(f32) - 0.5) *
-                (game.bounds.right_bound + @abs(game.bounds.left_bound));
-            astr.pos.y = game.bounds.bottom_bound + radius(astr.size);
+                (bounds.right_bound + @abs(bounds.left_bound));
+            astr.pos.y = bounds.bottom_bound + radius(astr.size);
             astr.velocity.x = (prng.random().float(f32) - 0.5) * 2;
             astr.velocity.y = (1 - astr.velocity.x) * (-1);
         } else if (astr.spawn_side == .left) {
-            astr.pos.x = game.bounds.left_bound - radius(astr.size);
+            astr.pos.x = bounds.left_bound - radius(astr.size);
             astr.pos.y = (prng.random().float(f32) - 0.5) *
-                (game.bounds.bottom_bound + @abs(game.bounds.top_bound));
+                (bounds.bottom_bound + @abs(bounds.top_bound));
             astr.velocity.x = prng.random().float(f32);
             astr.velocity.y = (1 - astr.velocity.x);
         } else if (astr.spawn_side == .right) {
-            astr.pos.x = game.bounds.right_bound + radius(astr.size);
+            astr.pos.x = bounds.right_bound + radius(astr.size);
             astr.pos.y = (prng.random().float(f32) - 0.5) *
-                (game.bounds.bottom_bound + @abs(game.bounds.top_bound));
+                (bounds.bottom_bound + @abs(bounds.top_bound));
             astr.velocity.x = prng.random().float(f32) * (-1);
             astr.velocity.y = (1 - astr.velocity.x) * (-1);
         }
@@ -199,16 +199,16 @@ pub const Asteroid = struct {
 
     fn checkIfOutOfBounds(
         self: *Asteroid,
-        game: *const Game,
+        bounds: Game.Bounds,
         top: bool,
         bottom: bool,
         left: bool,
         right: bool,
     ) bool {
-        if ((top and self.pos.y < game.bounds.top_bound) or
-            (bottom and self.pos.y > game.bounds.bottom_bound) or
-            (left and self.pos.x < game.bounds.left_bound) or
-            (right and self.pos.x > game.bounds.right_bound))
+        if ((top and self.pos.y < bounds.top_bound) or
+            (bottom and self.pos.y > bounds.bottom_bound) or
+            (left and self.pos.x < bounds.left_bound) or
+            (right and self.pos.x > bounds.right_bound))
         {
             return true;
         }
@@ -219,47 +219,47 @@ pub const Asteroid = struct {
     /// Returns true if the asteroid should be destroyed
     pub fn update(
         self: *Asteroid,
-        game: *const Game,
+        bounds: Game.Bounds,
         ship: *Ship,
         prng: *rand.DefaultPrng,
     ) bool {
-        self.pos.x += self.velocity.x * game.deltaTimeNormalized();
-        self.pos.y += self.velocity.y * game.deltaTimeNormalized();
+        self.pos.x += self.velocity.x * Game.deltaTimeNormalized();
+        self.pos.y += self.velocity.y * Game.deltaTimeNormalized();
 
         if (rlm.vector2Distance(self.pos, ship.pos) <= radius(self.size)) {
             ship.hasCollided(prng);
         }
 
         if ((self.spawn_side == .top and self.checkIfOutOfBounds(
-            game,
+            bounds,
             false,
             true,
             true,
             true,
         )) or
             (self.spawn_side == .bottom and self.checkIfOutOfBounds(
-            game,
+            bounds,
             true,
             false,
             true,
             true,
         )) or
             (self.spawn_side == .left and self.checkIfOutOfBounds(
-            game,
+            bounds,
             true,
             true,
             false,
             true,
         )) or
             (self.spawn_side == .right and self.checkIfOutOfBounds(
-            game,
+            bounds,
             true,
             true,
             true,
             false,
         )) or
             (self.spawn_side == .check_for_all and self.checkIfOutOfBounds(
-            game,
+            bounds,
             true,
             true,
             true,
