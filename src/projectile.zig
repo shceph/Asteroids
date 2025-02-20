@@ -6,6 +6,7 @@ const Vector2 = rl.Vector2;
 
 const Game = @import("game.zig").Game;
 const Asteroid = @import("asteroid.zig").Asteroid;
+const Ship = @import("ship.zig").Ship;
 
 fn isPosInMap(pos: Vector2, game: *const Game) bool {
     if (pos.x < game.bounds.left_bound or pos.x > game.bounds.right_bound or
@@ -17,39 +18,48 @@ fn isPosInMap(pos: Vector2, game: *const Game) bool {
     return true;
 }
 
-pub const Rocket = struct {
-    pub const max_rockets = 5;
-    const rocket_speed = 4.0;
+pub const Projectile = struct {
+    pub const max_projectiles = 5;
+    const projectile_speed = 4.0;
 
     pos: Vector2,
     angle: f32,
 
-    pub fn new(pos: Vector2, angle: f32) Rocket {
-        const rocket: Rocket = .{
+    pub fn new(pos: Vector2, angle: f32) Projectile {
+        var projectile: Projectile = .{
             .pos = pos,
             .angle = angle,
         };
-        return rocket;
+
+        projectile.pos.x += @cos(angle) * Ship.collision_radius;
+        projectile.pos.y += @sin(angle) * Ship.collision_radius;
+
+        return projectile;
     }
 
-    /// If returned false, the rocket is to be destroyed
+    /// If returned false, the projectile is to be destroyed
     pub fn update(
-        self: *Rocket,
+        self: *Projectile,
         game: *const Game,
+        ship: *Ship,
         asteroids: *std.ArrayList(Asteroid),
-        rnd: *rand.DefaultPrng,
+        prng: *rand.DefaultPrng,
     ) !bool {
-        self.pos.x += rocket_speed * @sin(-self.angle) * game.*.deltaTimeNormalized();
-        self.pos.y += rocket_speed * @cos(self.angle) * game.*.deltaTimeNormalized();
+        self.pos.x += projectile_speed * @sin(-self.angle) * game.deltaTimeNormalized();
+        self.pos.y += projectile_speed * @cos(self.angle) * game.deltaTimeNormalized();
 
         if (!isPosInMap(self.pos, game)) {
             return false;
         }
 
+        if (rlm.vector2Distance(self.pos, ship.pos) < Ship.collision_radius) {
+            ship.hasCollided(prng);
+        }
+
         for (asteroids.items) |*astr| {
             if (rlm.vector2Distance(astr.pos, self.pos) <= Asteroid.radius(astr.size)) {
                 if (astr.size == .small) {
-                    astr.* = Asteroid.new(game, rnd);
+                    astr.* = Asteroid.new(game, prng);
                     return false;
                 }
 
@@ -62,14 +72,14 @@ pub const Rocket = struct {
                     astr_pos,
                     astr_vel,
                     new_size,
-                    rnd,
+                    prng,
                 );
                 try asteroids.append(
                     Asteroid.newFromDestroyed(
                         astr_pos,
                         astr_vel,
                         new_size,
-                        rnd,
+                        prng,
                     ),
                 );
 

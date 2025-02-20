@@ -10,22 +10,23 @@ const Matrix = rl.Matrix;
 const draw = @import("draw.zig");
 const Line = draw.Line;
 const Game = @import("game.zig").Game;
-const Rocket = @import("rocket.zig").Rocket;
+const Projectile = @import("projectile.zig").Projectile;
 const Ship = @import("ship.zig").Ship;
 const Asteroid = @import("asteroid.zig").Asteroid;
 const Alien = @import("alien.zig").Alien;
 
-fn updateRockets(
-    rockets: *std.ArrayList(Rocket),
+fn updateProjectiles(
+    projectiles: *std.ArrayList(Projectile),
     game: *const Game,
+    ship: *Ship,
     asteroids: *std.ArrayList(Asteroid),
-    rnd: *rand.DefaultPrng,
+    prng: *rand.DefaultPrng,
 ) !void {
     var i: usize = 0;
 
-    while (i < rockets.items.len) {
-        if (!try rockets.items[i].update(game, asteroids, rnd)) {
-            _ = rockets.swapRemove(i);
+    while (i < projectiles.items.len) {
+        if (!try projectiles.items[i].update(game, ship, asteroids, prng)) {
+            _ = projectiles.swapRemove(i);
             continue;
         }
 
@@ -37,13 +38,22 @@ fn update(
     game: *const Game,
     ship: *Ship,
     asteroids: *std.ArrayList(Asteroid),
-    rockets: *std.ArrayList(Rocket),
+    projectiles: *std.ArrayList(Projectile),
     alien: *Alien,
     prng: *rand.DefaultPrng,
 ) !void {
     try ship.update(game);
-    try updateRockets(rockets, game, asteroids, prng);
+    try updateProjectiles(projectiles, game, ship, asteroids, prng);
     alien.update(game, prng);
+    const should_remain = try alien.projectile.update(game, ship, asteroids, prng);
+
+    if (!should_remain) {
+        const alien_to_ship_vec = rlm.vector2Subtract(ship.pos, alien.pos);
+        alien.projectile = Projectile.new(
+            alien.pos,
+            math.atan2(-alien_to_ship_vec.x, alien_to_ship_vec.y),
+        );
+    }
 
     var i: usize = 0;
 
@@ -62,7 +72,7 @@ fn update(
 }
 
 pub fn shoot(
-    rockets: *std.ArrayList(Rocket),
+    projectiles: *std.ArrayList(Projectile),
     ship_pos: Vector2,
     ship_rot: f32,
 ) !void {
@@ -80,18 +90,18 @@ pub fn shoot(
 
     const time_between_shots = 0.1;
 
-    if (rockets.items.len == Rocket.max_rockets or
+    if (projectiles.items.len == Projectile.max_projectiles or
         static.timeSinceLastShot() < time_between_shots)
     {
         return;
     }
 
-    try rockets.append(Rocket.new(ship_pos, ship_rot));
+    try projectiles.append(Projectile.new(ship_pos, ship_rot));
 
     static.setTime();
 }
 
-fn input(ship: *Ship, rockets: *std.ArrayList(Rocket)) !void {
+fn input(ship: *Ship, projectiles: *std.ArrayList(Projectile)) !void {
     if (ship.collided) {
         if (rl.isKeyDown(.enter)) {
             ship.realive();
@@ -116,26 +126,41 @@ fn input(ship: *Ship, rockets: *std.ArrayList(Rocket)) !void {
     }
 
     if (rl.isKeyDown(.space)) {
-        try shoot(rockets, ship.pos, ship.rot);
+        try shoot(projectiles, ship.pos, ship.rot);
     }
 }
 
-fn drawRockets(rockets: *const std.ArrayList(Rocket)) void {
-    const rocket_lenght = 3.0;
+fn drawProjectiles(
+    projectiles: *const std.ArrayList(Projectile),
+    alien_projectile: Projectile,
+) void {
+    const projectile_lenght = 3.0;
 
-    for (rockets.items) |rocket| {
+    for (projectiles.items) |projectile| {
         var line: Line = .{
-            .point_a = .{ .x = 0, .y = rocket_lenght / 2.0 },
-            .point_b = .{ .x = 0, .y = -rocket_lenght / 2.0 },
+            .point_a = .{ .x = 0, .y = projectile_lenght / 2.0 },
+            .point_b = .{ .x = 0, .y = -projectile_lenght / 2.0 },
         };
 
-        line.point_a = line.point_a.rotate(rocket.angle);
-        line.point_b = line.point_b.rotate(rocket.angle);
-        line.point_a = line.point_a.add(rocket.pos);
-        line.point_b = line.point_b.add(rocket.pos);
+        line.point_a = line.point_a.rotate(projectile.angle);
+        line.point_b = line.point_b.rotate(projectile.angle);
+        line.point_a = line.point_a.add(projectile.pos);
+        line.point_b = line.point_b.add(projectile.pos);
 
         draw.drawLine(line);
     }
+
+    var line: Line = .{
+        .point_a = .{ .x = 0, .y = projectile_lenght / 2.0 },
+        .point_b = .{ .x = 0, .y = -projectile_lenght / 2.0 },
+    };
+
+    line.point_a = line.point_a.rotate(alien_projectile.angle);
+    line.point_b = line.point_b.rotate(alien_projectile.angle);
+    line.point_a = line.point_a.add(alien_projectile.pos);
+    line.point_b = line.point_b.add(alien_projectile.pos);
+
+    draw.drawLine(line);
 }
 
 fn drawAsteroids(asteroids: *const std.ArrayList(Asteroid)) void {
@@ -187,9 +212,9 @@ pub fn main() !void {
         std.heap.page_allocator,
         max_asteroids,
     );
-    var rockets = try std.ArrayList(Rocket).initCapacity(
+    var projectiles = try std.ArrayList(Projectile).initCapacity(
         std.heap.page_allocator,
-        Rocket.max_rockets,
+        Projectile.max_projectiles,
     );
 
     for (0..min_asteroids) |_| {
@@ -200,19 +225,19 @@ pub fn main() !void {
     while (!rl.windowShouldClose()) {
         game.delta_time = rl.getFrameTime();
 
-        try input(&ship, &rockets);
-        try update(&game, &ship, &asteroids, &rockets, &alien, &prng);
+        try input(&ship, &projectiles);
+        try update(&game, &ship, &asteroids, &projectiles, &alien, &prng);
 
         rl.beginDrawing();
         defer rl.endDrawing();
 
         rl.clearBackground(rl.Color.black);
         ship.draw();
-        drawRockets(&rockets);
+        drawProjectiles(&projectiles, alien.projectile);
         drawAsteroids(&asteroids);
         drawAlien(alien);
     }
 
     asteroids.deinit();
-    rockets.deinit();
+    projectiles.deinit();
 }

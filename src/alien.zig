@@ -5,6 +5,7 @@ const rl = @import("raylib");
 const Vector2 = rl.Vector2;
 
 const Game = @import("game.zig").Game;
+const Projectile = @import("projectile.zig").Projectile;
 const Line = @import("draw.zig").Line;
 const Bounds = @import("game.zig").Game.Bounds;
 
@@ -28,6 +29,7 @@ pub const Alien = struct {
 
     pos: Vector2,
     vel: Vector2,
+    projectile: Projectile,
 
     pub fn setRandomVel(
         self: *Alien,
@@ -69,7 +71,13 @@ pub const Alien = struct {
         var alien: Alien = .{
             .pos = Vector2.init(0, 0),
             .vel = Vector2.init(0, 0),
+            .projectile = undefined,
         };
+
+        alien.projectile = Projectile.new(
+            alien.pos,
+            std.math.atan2(alien.vel.x, alien.vel.y),
+        );
 
         alien.setRandomVel(bounds, prng);
         return alien;

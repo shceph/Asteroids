@@ -11,8 +11,8 @@ const Game = @import("game.zig").Game;
 const Ship = @import("ship.zig").Ship;
 
 pub const Asteroid = struct {
-    pub const min_asteroids = 25;
-    pub const max_asteroids = 60;
+    pub const min_asteroids = 15;
+    pub const max_asteroids = 40;
     var points_on_circle_small_ast: [8]Vector2 = undefined;
     var points_on_circle_medium_ast: [8]Vector2 = undefined;
     var points_on_circle_large_ast: [8]Vector2 = undefined;
@@ -71,17 +71,29 @@ pub const Asteroid = struct {
 
     pub fn initStruct() void {
         for (0..8) |i| {
-            points_on_circle_small_ast[i] =
-                .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.small), .y = @sin(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.small) };
-            points_on_circle_medium_ast[i] =
-                .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.medium), .y = @sin(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.medium) };
-            points_on_circle_large_ast[i] =
-                .{ .x = @cos(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.large), .y = @sin(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.large) };
+            points_on_circle_small_ast[i] = .{
+                .x = @cos(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.small),
+                .y = @sin(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.small),
+            };
+            points_on_circle_medium_ast[i] = .{
+                .x = @cos(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.medium),
+                .y = @sin(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.medium),
+            };
+            points_on_circle_large_ast[i] = .{
+                .x = @cos(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.large),
+                .y = @sin(math.degreesToRadians(360.0 / 8.0 * @as(f32, @floatFromInt(i)))) * radius(.large),
+            };
         }
     }
 
     pub fn new(game: *const Game, prng: *rand.DefaultPrng) Asteroid {
-        var astr: Asteroid = .{ .points = undefined, .pos = undefined, .velocity = undefined, .size = undefined, .spawn_side = undefined };
+        var astr: Asteroid = .{
+            .points = undefined,
+            .pos = undefined,
+            .velocity = undefined,
+            .size = undefined,
+            .spawn_side = undefined,
+        };
 
         const rand_int = @mod(prng.random().int(i32), 100);
 
@@ -209,13 +221,13 @@ pub const Asteroid = struct {
         self: *Asteroid,
         game: *const Game,
         ship: *Ship,
-        rnd: *rand.DefaultPrng,
+        prng: *rand.DefaultPrng,
     ) bool {
         self.pos.x += self.velocity.x * game.deltaTimeNormalized();
         self.pos.y += self.velocity.y * game.deltaTimeNormalized();
 
         if (rl.math.vector2Distance(self.pos, ship.pos) <= radius(self.size)) {
-            ship.hasCollided(rnd);
+            ship.hasCollided(prng);
         }
 
         if ((self.spawn_side == .top and self.checkIfOutOfBounds(

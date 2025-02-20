@@ -9,7 +9,7 @@ const Matrix = rl.Matrix;
 
 const draw_mod = @import("draw.zig");
 const Line = draw_mod.Line;
-const Rocket = @import("rocket.zig").Rocket;
+const Projectile = @import("projectile.zig").Projectile;
 const Game = @import("game.zig").Game;
 const Asteroid = @import("asteroid.zig").Asteroid;
 
@@ -33,11 +33,11 @@ pub const Ship = struct {
         .{ .point_a = .{ .x = 2.00, .y = -3.5 }, .point_b = .{ .x = 0.00, .y = -7.0 } },
     };
 
+    pub const collision_radius = 10.0;
     const max_velocity = 3;
     const engine_working_acc = 0.07;
     const engine_idle_drag = 0.014;
-    const rotation_speed = 4.0;
-    const max_rockets = 5;
+    const rotation_speed = math.degreesToRadians(4.0);
 
     ship_lines: [7]Line,
     pos: Vector2,
@@ -53,10 +53,10 @@ pub const Ship = struct {
     const shipLinesRandVelocities = struct {
         var vels: [7]Vector2 = undefined;
 
-        fn setRandVelocities(rnd: *rand.DefaultPrng) void {
+        fn setRandVelocities(prng: *rand.DefaultPrng) void {
             for (&vels) |*value| {
-                value.x = (rnd.random().float(f32) - 0.5);
-                value.y = (rnd.random().float(f32) - 0.5);
+                value.x = (prng.random().float(f32) - 0.5);
+                value.y = (prng.random().float(f32) - 0.5);
             }
         }
     };
@@ -68,7 +68,7 @@ pub const Ship = struct {
             .pos = rl.Vector2.init(0, 0),
             .vel = rl.Vector2.init(0, 0),
             .acc = rl.Vector2.init(0, 0),
-            .rot = 0,
+            .rot = math.pi / 2.0,
             .angle_when_engine_last_used = 0,
             .engine_working = false,
             .collided = false,
@@ -84,7 +84,7 @@ pub const Ship = struct {
         self.* = Ship.new();
     }
 
-    pub fn hasCollided(self: *Ship, rnd: *rand.DefaultPrng) void {
+    pub fn hasCollided(self: *Ship, prng: *rand.DefaultPrng) void {
         if (self.collided) {
             return;
         }
@@ -93,7 +93,7 @@ pub const Ship = struct {
         self.acc = .{ .x = 0, .y = 0 };
         // self.vel = .{ .x = 0, .y = 0 };
         self.engine_working = false;
-        lineVels.setRandVelocities(rnd);
+        lineVels.setRandVelocities(prng);
     }
 
     pub fn rotateLeftwards(self: *Ship) void {
@@ -107,13 +107,13 @@ pub const Ship = struct {
     pub fn update(self: *Ship, game: *const Game) !void {
         if (self.rotate_leftwards) {
             self.rot -=
-                math.degreesToRadians(rotation_speed) * game.deltaTimeNormalized();
+                rotation_speed * game.deltaTimeNormalized();
             self.rotate_leftwards = false;
         }
 
         if (self.rotate_rightwards) {
             self.rot +=
-                math.degreesToRadians(rotation_speed) * game.deltaTimeNormalized();
+                rotation_speed * game.deltaTimeNormalized();
             self.rotate_rightwards = false;
         }
 
@@ -180,32 +180,6 @@ pub const Ship = struct {
         if (self.pos.y > game.bounds.bottom_bound) {
             self.pos.y = game.bounds.top_bound;
         }
-    }
-
-    pub fn shoot(self: *Ship) !void {
-        const static = struct {
-            var time_up_to_last_shot: f64 = 0;
-
-            fn setTime() void {
-                time_up_to_last_shot = rl.getTime();
-            }
-
-            fn timeSinceLastShot() f64 {
-                return rl.getTime() - time_up_to_last_shot;
-            }
-        };
-
-        const time_between_shots = 0.1;
-
-        if (self.rockets.items.len == max_rockets or
-            static.timeSinceLastShot() < time_between_shots)
-        {
-            return;
-        }
-
-        try self.rockets.append(Rocket.new(self.pos, self.rot));
-
-        static.setTime();
     }
 
     pub fn draw(self: *Ship) void {
