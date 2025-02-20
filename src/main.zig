@@ -51,7 +51,7 @@ fn update(
         const alien_to_ship_vec = rlm.vector2Subtract(ship.pos, alien.pos);
         alien.projectile = Projectile.new(
             alien.pos,
-            math.atan2(-alien_to_ship_vec.x, alien_to_ship_vec.y),
+            math.atan2(alien_to_ship_vec.y, alien_to_ship_vec.x),
         );
     }
 
@@ -138,8 +138,8 @@ fn drawProjectiles(
 
     for (projectiles.items) |projectile| {
         var line: Line = .{
-            .point_a = .{ .x = 0, .y = projectile_lenght / 2.0 },
-            .point_b = .{ .x = 0, .y = -projectile_lenght / 2.0 },
+            .point_a = .{ .y = 0, .x = projectile_lenght / 2.0 },
+            .point_b = .{ .y = 0, .x = -projectile_lenght / 2.0 },
         };
 
         line.point_a = line.point_a.rotate(projectile.angle);
@@ -151,8 +151,8 @@ fn drawProjectiles(
     }
 
     var line: Line = .{
-        .point_a = .{ .x = 0, .y = projectile_lenght / 2.0 },
-        .point_b = .{ .x = 0, .y = -projectile_lenght / 2.0 },
+        .point_a = .{ .y = 0, .x = projectile_lenght / 2.0 },
+        .point_b = .{ .y = 0, .x = -projectile_lenght / 2.0 },
     };
 
     line.point_a = line.point_a.rotate(alien_projectile.angle);

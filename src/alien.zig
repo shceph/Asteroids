@@ -44,18 +44,18 @@ pub const Alien = struct {
 
         const min_distance_from_bounds = 20;
 
-        if (@abs(self.pos.x - bounds.left_bound) <= min_distance_from_bounds) {
+        if (self.pos.x - bounds.left_bound <= min_distance_from_bounds) {
             multiply_x_by_1_or_minus_1 = 1;
             std.debug.print("\nleft bound\n", .{});
-        } else if (@abs(self.pos.x - bounds.right_bound) <= min_distance_from_bounds) {
+        } else if (bounds.right_bound - self.pos.x <= min_distance_from_bounds) {
             multiply_x_by_1_or_minus_1 = -1;
             std.debug.print("\nright bound\n", .{});
         }
 
-        if (@abs(self.pos.y - bounds.top_bound) <= min_distance_from_bounds) {
+        if (self.pos.y - bounds.top_bound <= min_distance_from_bounds) {
             multiply_y_by_1_or_minus_1 = 1;
             std.debug.print("\ntop bound\n", .{});
-        } else if (@abs(self.pos.y - bounds.bottom_bound) <= min_distance_from_bounds) {
+        } else if (bounds.bottom_bound - self.pos.x <= min_distance_from_bounds) {
             multiply_y_by_1_or_minus_1 = -1;
             std.debug.print("\nbottom bound\n", .{});
         }
@@ -76,7 +76,7 @@ pub const Alien = struct {
 
         alien.projectile = Projectile.new(
             alien.pos,
-            std.math.atan2(alien.vel.x, alien.vel.y),
+            std.math.atan2(alien.vel.y, alien.vel.x),
         );
 
         alien.setRandomVel(bounds, prng);

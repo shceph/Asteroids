@@ -45,8 +45,8 @@ pub const Projectile = struct {
         asteroids: *std.ArrayList(Asteroid),
         prng: *rand.DefaultPrng,
     ) !bool {
-        self.pos.x += projectile_speed * @sin(-self.angle) * game.deltaTimeNormalized();
-        self.pos.y += projectile_speed * @cos(self.angle) * game.deltaTimeNormalized();
+        self.pos.x += projectile_speed * @cos(self.angle) * game.deltaTimeNormalized();
+        self.pos.y += projectile_speed * @sin(self.angle) * game.deltaTimeNormalized();
 
         if (!isPosInMap(self.pos, game)) {
             return false;

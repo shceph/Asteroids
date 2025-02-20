@@ -226,7 +226,7 @@ pub const Asteroid = struct {
         self.pos.x += self.velocity.x * game.deltaTimeNormalized();
         self.pos.y += self.velocity.y * game.deltaTimeNormalized();
 
-        if (rl.math.vector2Distance(self.pos, ship.pos) <= radius(self.size)) {
+        if (rlm.vector2Distance(self.pos, ship.pos) <= radius(self.size)) {
             ship.hasCollided(prng);
         }
 

@@ -24,16 +24,16 @@ const gameToWin = convertFromGameToWindowCoords;
 
 pub const Ship = struct {
     const default_ship_lines: [7]Line = .{
-        .{ .point_a = .{ .x = 0.00, .y = 5.00 }, .point_b = .{ .x = -5.0, .y = -5.0 } },
-        .{ .point_a = .{ .x = 0.00, .y = 5.00 }, .point_b = .{ .x = 5.00, .y = -5.0 } },
-        .{ .point_a = .{ .x = -5.0, .y = -5.0 }, .point_b = .{ .x = -3.0, .y = -3.5 } },
-        .{ .point_a = .{ .x = 5.00, .y = -5.0 }, .point_b = .{ .x = 3.00, .y = -3.5 } },
-        .{ .point_a = .{ .x = -3.0, .y = -3.5 }, .point_b = .{ .x = 3.00, .y = -3.5 } },
-        .{ .point_a = .{ .x = -2.0, .y = -3.5 }, .point_b = .{ .x = 0.00, .y = -7.0 } },
-        .{ .point_a = .{ .x = 2.00, .y = -3.5 }, .point_b = .{ .x = 0.00, .y = -7.0 } },
+        .{ .point_a = .{ .y = 0.00, .x = 5.00 }, .point_b = .{ .y = -5.0, .x = -5.0 } },
+        .{ .point_a = .{ .y = 0.00, .x = 5.00 }, .point_b = .{ .y = 5.00, .x = -5.0 } },
+        .{ .point_a = .{ .y = -5.0, .x = -5.0 }, .point_b = .{ .y = -3.0, .x = -3.5 } },
+        .{ .point_a = .{ .y = 5.00, .x = -5.0 }, .point_b = .{ .y = 3.00, .x = -3.5 } },
+        .{ .point_a = .{ .y = -3.0, .x = -3.5 }, .point_b = .{ .y = 3.00, .x = -3.5 } },
+        .{ .point_a = .{ .y = -2.0, .x = -3.5 }, .point_b = .{ .y = 0.00, .x = -7.0 } },
+        .{ .point_a = .{ .y = 2.00, .x = -3.5 }, .point_b = .{ .y = 0.00, .x = -7.0 } },
     };
 
-    pub const collision_radius = 10.0;
+    pub const collision_radius = 6.0;
     const max_velocity = 3;
     const engine_working_acc = 0.07;
     const engine_idle_drag = 0.014;
@@ -125,8 +125,8 @@ pub const Ship = struct {
                     line.point_b.add(lineVels.vels[i].scale(game.deltaTimeNormalized()));
             }
         } else if (self.engine_working) {
-            self.acc.x = @sin(-self.rot) * engine_working_acc;
-            self.acc.y = @cos(self.rot) * engine_working_acc;
+            self.acc.x = @cos(self.rot) * engine_working_acc;
+            self.acc.y = @sin(self.rot) * engine_working_acc;
         } else {
             if (self.vel.x > engine_idle_drag or self.vel.x < -engine_idle_drag) {
                 self.acc.x = -engine_idle_drag * @cos(self.angle_when_engine_last_used);
