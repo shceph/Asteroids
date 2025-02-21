@@ -40,7 +40,7 @@ pub const Projectile = struct {
     /// If returned false, the projectile is to be destroyed
     pub fn update(
         self: *Projectile,
-        game: *const Game,
+        bounds: Game.Bounds,
         ship: *Ship,
         asteroids: *std.ArrayList(Asteroid),
         prng: *rand.DefaultPrng,
@@ -48,18 +48,19 @@ pub const Projectile = struct {
         self.pos.x += projectile_speed * @cos(self.angle) * Game.deltaTimeNormalized();
         self.pos.y += projectile_speed * @sin(self.angle) * Game.deltaTimeNormalized();
 
-        if (!isPosInMap(self.pos, game.bounds)) {
+        if (!isPosInMap(self.pos, bounds)) {
             return false;
         }
 
         if (rlm.vector2Distance(self.pos, ship.pos) < Ship.collision_radius) {
             ship.hasCollided(prng);
+            return false;
         }
 
         for (asteroids.items) |*astr| {
             if (rlm.vector2Distance(astr.pos, self.pos) <= Asteroid.radius(astr.size)) {
                 if (astr.size == .small) {
-                    astr.* = Asteroid.new(game.bounds, prng);
+                    astr.* = Asteroid.new(bounds, prng);
                     return false;
                 }
 

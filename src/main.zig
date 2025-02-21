@@ -25,7 +25,7 @@ fn updateProjectiles(
     var i: usize = 0;
 
     while (i < projectiles.items.len) {
-        if (!try projectiles.items[i].update(game, ship, asteroids, prng)) {
+        if (!try projectiles.items[i].update(game.bounds, ship, asteroids, prng)) {
             _ = projectiles.swapRemove(i);
             continue;
         }
@@ -57,10 +57,25 @@ fn update(
     try ship.update(game.bounds);
     try updateProjectiles(projectiles, game, ship, asteroids, prng);
     alien.update(game.bounds, prng);
-    const should_remain = try alien.projectile.update(game, ship, asteroids, prng);
+
+    var alien_projectile_should_remain = false;
+
+    if (alien.projectile) |*projectile| {
+        alien_projectile_should_remain = try projectile.update(
+            game.bounds,
+            ship,
+            asteroids,
+            prng,
+        );
+
+        if (!alien_projectile_should_remain) {
+            alien.projectile = null;
+        }
+    }
+
     const time_between_shots = 4.0;
 
-    if (!should_remain and static.timeSinceLastShot() > time_between_shots) {
+    if (!alien_projectile_should_remain and static.timeSinceLastShot() > time_between_shots) {
         const alien_to_ship_vec = rlm.vector2Subtract(ship.pos, alien.pos);
         alien.projectile = Projectile.new(
             alien.pos,
@@ -147,7 +162,7 @@ fn input(ship: *Ship, projectiles: *std.ArrayList(Projectile)) !void {
 
 fn drawProjectiles(
     projectiles: *const std.ArrayList(Projectile),
-    alien_projectile: Projectile,
+    alien_projectile: ?Projectile,
 ) void {
     const projectile_lenght = 3.0;
 
@@ -165,17 +180,19 @@ fn drawProjectiles(
         draw.drawLine(line);
     }
 
-    var line: Line = .{
-        .point_a = .{ .y = 0, .x = projectile_lenght / 2.0 },
-        .point_b = .{ .y = 0, .x = -projectile_lenght / 2.0 },
-    };
+    if (alien_projectile) |projectile| {
+        var line: Line = .{
+            .point_a = .{ .y = 0, .x = projectile_lenght / 2.0 },
+            .point_b = .{ .y = 0, .x = -projectile_lenght / 2.0 },
+        };
 
-    line.point_a = line.point_a.rotate(alien_projectile.angle);
-    line.point_b = line.point_b.rotate(alien_projectile.angle);
-    line.point_a = line.point_a.add(alien_projectile.pos);
-    line.point_b = line.point_b.add(alien_projectile.pos);
+        line.point_a = line.point_a.rotate(projectile.angle);
+        line.point_b = line.point_b.rotate(projectile.angle);
+        line.point_a = line.point_a.add(projectile.pos);
+        line.point_b = line.point_b.add(projectile.pos);
 
-    draw.drawLine(line);
+        draw.drawLine(line);
+    }
 }
 
 fn drawAsteroids(asteroids: *const std.ArrayList(Asteroid)) void {
@@ -223,14 +240,18 @@ pub fn main() !void {
     var game = Game.new();
     var ship = Ship.new();
     var alien = Alien.new(game.bounds, &prng);
+
     var asteroids = try std.ArrayList(Asteroid).initCapacity(
         std.heap.page_allocator,
         max_asteroids,
     );
+    defer asteroids.deinit();
+
     var projectiles = try std.ArrayList(Projectile).initCapacity(
         std.heap.page_allocator,
         Projectile.max_projectiles,
     );
+    defer projectiles.deinit();
 
     for (0..min_asteroids) |_| {
         try asteroids.append(Asteroid.new(game.bounds, &prng));
@@ -250,7 +271,4 @@ pub fn main() !void {
         drawAsteroids(&asteroids);
         drawAlien(alien);
     }
-
-    asteroids.deinit();
-    projectiles.deinit();
 }

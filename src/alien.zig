@@ -29,7 +29,7 @@ pub const Alien = struct {
 
     pos: Vector2,
     vel: Vector2,
-    projectile: Projectile,
+    projectile: ?Projectile,
 
     pub fn setRandomVel(
         self: *Alien,
@@ -71,7 +71,7 @@ pub const Alien = struct {
         var alien: Alien = .{
             .pos = Vector2.init(0, 0),
             .vel = Vector2.init(0, 0),
-            .projectile = undefined,
+            .projectile = null,
         };
 
         alien.projectile = Projectile.new(
