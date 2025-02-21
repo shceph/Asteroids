@@ -162,7 +162,7 @@ pub const Asteroid = struct {
         pos: Vector2,
         parentAstrVel: Vector2,
         size: Size,
-        rnd: *rand.DefaultPrng,
+        prng: *rand.DefaultPrng,
     ) Asteroid {
         var astr: Asteroid = .{
             .points = undefined,
@@ -173,24 +173,24 @@ pub const Asteroid = struct {
         };
 
         astr.velocity = parentAstrVel;
-        astr.velocity.x += rnd.random().float(f32) / 5;
+        astr.velocity.x += prng.random().float(f32) / 5;
         astr.velocity.y += (1.0 / 5.0) - astr.velocity.x;
 
         for (astr.points, 0..) |_, i| {
             const multiply_x_by_1_or_minus_1: f32 =
-                if (rnd.random().boolean()) -1 else 1;
+                if (prng.random().boolean()) -1 else 1;
 
             const multiply_y_by_1_or_minus_1: f32 =
-                if (rnd.random().boolean()) -1 else 1;
+                if (prng.random().boolean()) -1 else 1;
 
             astr.points[i].x =
                 Asteroid.pointsOnCircle(astr.size)[i].x +
-                multiply_x_by_1_or_minus_1 * rnd.random().float(f32) *
+                multiply_x_by_1_or_minus_1 * prng.random().float(f32) *
                 randomMultiplier(astr.size);
 
             astr.points[i].y =
                 Asteroid.pointsOnCircle(astr.size)[i].y +
-                multiply_y_by_1_or_minus_1 * rnd.random().float(f32) *
+                multiply_y_by_1_or_minus_1 * prng.random().float(f32) *
                 randomMultiplier(astr.size);
         }
 

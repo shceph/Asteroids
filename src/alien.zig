@@ -27,8 +27,11 @@ pub const Alien = struct {
 
     const velocity = 1;
 
+    health: i32,
     pos: Vector2,
     vel: Vector2,
+    last_time_speed_updated: f64,
+    last_time_projectile_shot: f64,
     projectile: ?Projectile,
 
     pub fn setRandomVel(
@@ -46,18 +49,14 @@ pub const Alien = struct {
 
         if (self.pos.x - bounds.left_bound <= min_distance_from_bounds) {
             multiply_x_by_1_or_minus_1 = 1;
-            std.debug.print("\nleft bound\n", .{});
         } else if (bounds.right_bound - self.pos.x <= min_distance_from_bounds) {
             multiply_x_by_1_or_minus_1 = -1;
-            std.debug.print("\nright bound\n", .{});
         }
 
         if (self.pos.y - bounds.top_bound <= min_distance_from_bounds) {
             multiply_y_by_1_or_minus_1 = 1;
-            std.debug.print("\ntop bound\n", .{});
         } else if (bounds.bottom_bound - self.pos.x <= min_distance_from_bounds) {
             multiply_y_by_1_or_minus_1 = -1;
-            std.debug.print("\nbottom bound\n", .{});
         }
 
         const flt = prng.random().float(f32);
@@ -69,8 +68,11 @@ pub const Alien = struct {
 
     pub fn new(bounds: Bounds, prng: *rand.DefaultPrng) Alien {
         var alien: Alien = .{
+            .health = 100,
             .pos = Vector2.init(0, 0),
             .vel = Vector2.init(0, 0),
+            .last_time_speed_updated = rl.getTime(),
+            .last_time_projectile_shot = rl.getTime(),
             .projectile = null,
         };
 
@@ -84,24 +86,12 @@ pub const Alien = struct {
     }
 
     pub fn update(self: *Alien, bounds: Bounds, prng: *rand.DefaultPrng) void {
-        const static = struct {
-            var frame_count: i32 = 0;
+        const update_velocities_time = 2.0;
 
-            fn update(
-                alien: *Alien,
-                bounds_inner: Bounds,
-                prng_inner: *rand.DefaultPrng,
-            ) void {
-                if (frame_count >= 120) {
-                    alien.setRandomVel(bounds_inner, prng_inner);
-                    frame_count = 0;
-                }
-
-                frame_count += 1;
-            }
-        };
-
-        static.update(self, bounds, prng);
+        if (rl.getTime() - self.last_time_speed_updated >= update_velocities_time) {
+            self.setRandomVel(bounds, prng);
+            self.last_time_speed_updated = rl.getTime();
+        }
 
         self.pos.x += self.vel.x * Game.deltaTimeNormalized();
         self.pos.y += self.vel.y * Game.deltaTimeNormalized();
