@@ -8,6 +8,7 @@ const Vector2 = rl.Vector2;
 const Matrix = rl.Matrix;
 
 const draw = @import("draw.zig");
+const sounds = @import("sound.zig").sounds;
 const Line = draw.Line;
 const Game = @import("game.zig").Game;
 const Projectile = @import("projectile.zig").Projectile;
@@ -20,12 +21,19 @@ fn updateProjectiles(
     game: *const Game,
     ship: *Ship,
     asteroids: *std.ArrayList(Asteroid),
+    aliens: []Alien,
     prng: *rand.DefaultPrng,
 ) !void {
     var i: usize = 0;
 
     while (i < projectiles.items.len) {
-        if (try projectiles.items[i].update(game.bounds, ship, asteroids, prng)) {
+        if (try projectiles.items[i].update(
+            game.bounds,
+            ship,
+            asteroids,
+            aliens,
+            prng,
+        )) {
             _ = projectiles.swapRemove(i);
             continue;
         }
@@ -47,6 +55,7 @@ fn updateAlienProjectiles(
                 bounds,
                 ship,
                 asteroids,
+                aliens,
                 prng,
             );
 
@@ -67,6 +76,7 @@ fn updateAlienProjectiles(
             );
 
             alien.last_time_projectile_shot = rl.getTime();
+            rl.playSound(sounds.alien_shooting);
         }
     }
 }
@@ -76,30 +86,47 @@ fn update(
     ship: *Ship,
     asteroids: *std.ArrayList(Asteroid),
     projectiles: *std.ArrayList(Projectile),
-    aliens: []Alien,
+    aliens: *std.BoundedArray(Alien, 3),
     prng: *rand.DefaultPrng,
 ) !void {
-    try ship.update(game.bounds);
-    try updateProjectiles(projectiles, game, ship, asteroids, prng);
-    try updateAlienProjectiles(aliens, game.bounds, ship, asteroids, prng);
-
-    for (aliens) |*alien| {
-        alien.update(game.bounds, prng);
+    if (ship.has_collided_this_frame) {
+        rl.playSound(sounds.ship_destroyed);
     }
 
+    try ship.update(game.bounds);
+    try updateProjectiles(projectiles, game, ship, asteroids, aliens.slice(), prng);
+    try updateAlienProjectiles(aliens.slice(), game.bounds, ship, asteroids, prng);
+
     var i: usize = 0;
+    while (i < aliens.len) {
+        const destroy_alien = aliens.slice()[i].update(game.bounds, prng);
 
-    while (i < asteroids.items.len) {
-        if (asteroids.items[i].update(game.bounds, ship, prng)) {
-            if (asteroids.items.len > Asteroid.min_asteroids) {
-                _ = asteroids.swapRemove(i);
-                continue;
-            }
-
-            asteroids.items[i] = Asteroid.new(game.bounds, prng);
+        if (!destroy_alien) {
+            i += 1;
+            continue;
         }
 
-        i += 1;
+        _ = aliens.swapRemove(i);
+    }
+
+    i = 0;
+    while (i < asteroids.items.len) {
+        const destroy_asteroid = asteroids.items[i].update(
+            game.bounds,
+            ship,
+            prng,
+        );
+
+        if (!destroy_asteroid) {
+            i += 1;
+            continue;
+        }
+
+        if (asteroids.items.len > Asteroid.min_asteroids) {
+            _ = asteroids.swapRemove(i);
+        } else {
+            asteroids.items[i] = Asteroid.new(game.bounds, prng);
+        }
     }
 }
 
@@ -129,6 +156,7 @@ pub fn shoot(
     }
 
     try projectiles.append(Projectile.new(ship_pos, ship_rot));
+    rl.playSound(sounds.ship_shooting);
 
     static.setTime();
 }
@@ -234,6 +262,10 @@ pub fn main() !void {
     // defer rl.closeWindow();
     // rl.toggleFullscreen();
 
+    rl.initAudioDevice();
+    defer rl.closeAudioDevice();
+    try sounds.initSounds();
+
     rl.setTargetFPS(60);
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -247,8 +279,6 @@ pub fn main() !void {
 
     Asteroid.initStruct();
 
-    const max_asteroids = 60;
-    const min_asteroids = 25;
     const alien_count = 3;
 
     var prng = rand.DefaultPrng.init(@as(u64, @bitCast(std.time.milliTimestamp())));
@@ -264,7 +294,7 @@ pub fn main() !void {
 
     var asteroids = try std.ArrayList(Asteroid).initCapacity(
         allocator,
-        max_asteroids,
+        Asteroid.max_asteroids,
     );
     defer asteroids.deinit();
 
@@ -274,14 +304,14 @@ pub fn main() !void {
     );
     defer projectiles.deinit();
 
-    for (0..min_asteroids) |_| {
+    for (0..Asteroid.min_asteroids) |_| {
         try asteroids.append(Asteroid.new(game.bounds, &prng));
     }
 
     // Detect window close button or ESC key
     while (!rl.windowShouldClose()) {
         try input(&ship, &projectiles);
-        try update(&game, &ship, &asteroids, &projectiles, aliens.slice(), &prng);
+        try update(&game, &ship, &asteroids, &projectiles, &aliens, &prng);
 
         rl.beginDrawing();
         defer rl.endDrawing();

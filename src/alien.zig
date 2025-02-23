@@ -25,6 +25,7 @@ pub const Alien = struct {
         .{ .point_a = .{ .x = -2.0, .y = -6.0 }, .point_b = .{ .x = 2.0, .y = -6.0 } },
     };
 
+    pub const collision_radius = 6.0;
     const velocity = 1;
 
     health: i32,
@@ -85,8 +86,13 @@ pub const Alien = struct {
         return alien;
     }
 
-    pub fn update(self: *Alien, bounds: Bounds, prng: *rand.DefaultPrng) void {
+    /// Returns true if the alien should be destroyed
+    pub fn update(self: *Alien, bounds: Bounds, prng: *rand.DefaultPrng) bool {
         const update_velocities_time = 2.0;
+
+        if (self.health <= 0) {
+            return true;
+        }
 
         if (rl.getTime() - self.last_time_speed_updated >= update_velocities_time) {
             self.setRandomVel(bounds, prng);
@@ -95,5 +101,10 @@ pub const Alien = struct {
 
         self.pos.x += self.vel.x * Game.deltaTimeNormalized();
         self.pos.y += self.vel.y * Game.deltaTimeNormalized();
+        return false;
+    }
+
+    pub fn takeHit(self: *Alien) void {
+        self.health -= 25;
     }
 };

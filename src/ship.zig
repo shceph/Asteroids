@@ -38,6 +38,7 @@ pub const Ship = struct {
     angle_when_engine_last_used: f32,
     engine_working: bool,
     collided: bool,
+    has_collided_this_frame: bool,
     rotate_leftwards: bool,
     rotate_rightwards: bool,
 
@@ -63,6 +64,7 @@ pub const Ship = struct {
             .angle_when_engine_last_used = 0,
             .engine_working = false,
             .collided = false,
+            .has_collided_this_frame = false,
             .rotate_leftwards = false,
             .rotate_rightwards = false,
             .ship_lines = default_ship_lines,
@@ -81,6 +83,7 @@ pub const Ship = struct {
         }
 
         self.collided = true;
+        self.has_collided_this_frame = true;
         self.acc = .{ .x = 0, .y = 0 };
         // self.vel = .{ .x = 0, .y = 0 };
         self.engine_working = false;
@@ -96,6 +99,8 @@ pub const Ship = struct {
     }
 
     pub fn update(self: *Ship, bounds: Game.Bounds) !void {
+        self.has_collided_this_frame = false;
+
         if (self.rotate_leftwards) {
             self.rot -=
                 rotation_speed * Game.deltaTimeNormalized();

@@ -4,9 +4,11 @@ const rl = @import("raylib");
 const rlm = rl.math;
 const Vector2 = rl.Vector2;
 
+const sounds = @import("sound.zig").sounds;
 const Game = @import("game.zig").Game;
 const Asteroid = @import("asteroid.zig").Asteroid;
 const Ship = @import("ship.zig").Ship;
+const Alien = @import("alien.zig").Alien;
 
 fn isPosInMap(pos: Vector2, bounds: Game.Bounds) bool {
     if (pos.x < bounds.left_bound or pos.x > bounds.right_bound or
@@ -43,6 +45,7 @@ pub const Projectile = struct {
         bounds: Game.Bounds,
         ship: *Ship,
         asteroids: *std.ArrayList(Asteroid),
+        aliens: []Alien,
         prng: *rand.DefaultPrng,
     ) !bool {
         self.pos.x += projectile_speed * @cos(self.angle) * Game.deltaTimeNormalized();
@@ -57,8 +60,16 @@ pub const Projectile = struct {
             return true;
         }
 
+        for (aliens) |*alien| {
+            if (rlm.vector2Distance(self.pos, alien.pos) <= Alien.collision_radius) {
+                alien.takeHit();
+            }
+        }
+
         for (asteroids.items) |*astr| {
             if (rlm.vector2Distance(astr.pos, self.pos) <= Asteroid.radius(astr.size)) {
+                rl.playSound(sounds.asteroid_explosion);
+
                 if (astr.size == .small) {
                     astr.* = Asteroid.new(bounds, prng);
                     return true;

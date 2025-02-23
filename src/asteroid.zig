@@ -11,8 +11,8 @@ const Game = @import("game.zig").Game;
 const Ship = @import("ship.zig").Ship;
 
 pub const Asteroid = struct {
-    pub const min_asteroids = 15;
-    pub const max_asteroids = 40;
+    pub const min_asteroids = 10;
+    pub const max_asteroids = 20;
     var points_on_circle_small_ast: [8]Vector2 = undefined;
     var points_on_circle_medium_ast: [8]Vector2 = undefined;
     var points_on_circle_large_ast: [8]Vector2 = undefined;
