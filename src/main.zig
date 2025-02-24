@@ -317,6 +317,7 @@ pub fn main() !void {
         defer rl.endDrawing();
 
         rl.clearBackground(rl.Color.black);
+        draw.drawCircle(Vector2.init(0, 0), 1);
         ship.draw();
         drawProjectiles(&projectiles, aliens.slice());
         drawAsteroids(&asteroids);

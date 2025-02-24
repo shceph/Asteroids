@@ -40,3 +40,11 @@ pub fn drawLine(line: Line) void {
         rl.Color.white,
     );
 }
+
+pub fn drawCircle(center: Vector2, radius: f32) void {
+    rl.drawCircleV(gameToWin(center), radius, rl.Color.white);
+}
+
+pub fn drawPoint(center: Vector2) void {
+    drawCircle(center, 1);
+}
