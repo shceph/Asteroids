@@ -15,6 +15,7 @@ const Projectile = @import("projectile.zig").Projectile;
 const Ship = @import("ship.zig").Ship;
 const Asteroid = @import("asteroid.zig").Asteroid;
 const Alien = @import("alien.zig").Alien;
+const Particles = @import("particles.zig").Particles;
 
 fn updateProjectiles(
     projectiles: *std.ArrayList(Projectile),
@@ -304,23 +305,29 @@ pub fn main() !void {
     );
     defer projectiles.deinit();
 
+    var particles = Particles.init(allocator);
+    defer particles.deinit();
+
     for (0..Asteroid.min_asteroids) |_| {
         try asteroids.append(Asteroid.new(game.bounds, &prng));
     }
+
+    try particles.beginParticles(Vector2.init(0, 0), 2, &prng);
 
     // Detect window close button or ESC key
     while (!rl.windowShouldClose()) {
         try input(&ship, &projectiles);
         try update(&game, &ship, &asteroids, &projectiles, &aliens, &prng);
+        particles.update();
 
         rl.beginDrawing();
         defer rl.endDrawing();
 
         rl.clearBackground(rl.Color.black);
-        draw.drawCircle(Vector2.init(0, 0), 1);
         ship.draw();
         drawProjectiles(&projectiles, aliens.slice());
         drawAsteroids(&asteroids);
         drawAliens(aliens.slice());
+        particles.draw();
     }
 }
